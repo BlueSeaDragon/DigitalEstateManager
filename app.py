@@ -218,7 +218,7 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
     default_index = categories.index(current_cat) if current_cat in categories else 0
 
     # Row 1: Service Name and Provider Website / Address
-    r1_c1, r1_c2 = st.columns(2, vertical_alignment="top")
+    r1_c1, r1_c2 = st.columns(2, vertical_alignment="bottom")
     with r1_c1:
         service_input = st.text_input(
             "Service / Provider Name*",
@@ -233,7 +233,7 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         )
 
     # Row 2: Account Identifier and Asset Type
-    r2_c1, r2_c2 = st.columns(2, vertical_alignment="top")
+    r2_c1, r2_c2 = st.columns(2, vertical_alignment="bottom")
     with r2_c1:
         username_input = st.text_input(
             "Account Identifier / Username / Email*",
@@ -391,10 +391,10 @@ if st.session_state.active_page == "Catalogue":
     with c_head:
         st.header("Digital Asset Catalogue")
         st.caption("Review, categorize, and execute actions for your digital estate assets by category.")
-    with c_btn:
+    #with c_btn:
         # Standard "Add Asset" button opening the dialog box
-        if st.button("➕ Add Asset", key="btn_add_header", type="primary", use_container_width=True):
-            modal_add_asset_dialog(default_category="Subscription")
+    #    if st.button("➕ Add Asset", key="btn_add_header", type="primary", use_container_width=True):
+    #        modal_add_asset_dialog(default_category="Subscription")
 
     # Overview metrics
     m1, m2, m3, m4 = st.columns(4)
@@ -654,15 +654,20 @@ if st.session_state.active_page == "Catalogue":
         st.subheader("Post-Mortem Execution Hub (Heir / Executor)")
         st.caption("Organized legal workflows, death policies, and dispatch notices separated by asset category.")
 
-        e_tab_all, e_tab_sub, e_tab_fin, e_tab_cloud, e_tab_social = st.tabs([
+        e_tab_all, e_tab_sub, e_tab_fin, e_tab_cloud, e_tab_social, e_tab_other = st.tabs([
             f"All Workflows ({len(current_assets)})",
             f"💳 Subscriptions ({len(subs_list)})",
             f"💰 Financial & Probate ({len(fin_list)})",
             f"☁️ Cloud Data Takeout ({len(cloud_list)})",
             f"📱 Memorialization ({len(social_list)})",
+            f"📁 Other ({len(other_list)})",
         ])
 
-        def render_executor_cards(assets_subset: List[Asset]):
+        def render_executor_cards(assets_subset: List[Asset], tab_prefix: str = "all"):
+            if not assets_subset:
+                st.info("No accounts cataloged in this category.")
+                return
+
             for asset_obj in assets_subset:
                 death_pol = asset_obj.death_policy
                 cancel_pol = asset_obj.cancel_policy
@@ -714,13 +719,13 @@ if st.session_state.active_page == "Catalogue":
                         "Legal Notice / Execution Dispatcher",
                         action_text,
                         height=140,
-                        key=f"cat_exec_notice_{asset_obj.id}",
+                        key=f"cat_exec_notice_{tab_prefix}_{asset_obj.id}",
                     )
 
                     toggle = st.checkbox(
                         "Mark action complete",
                         value=is_done,
-                        key=f"cat_exec_done_{asset_obj.id}",
+                        key=f"cat_exec_done_{tab_prefix}_{asset_obj.id}",
                     )
                     if toggle != is_done:
                         asset_obj.status = "Completed" if toggle else "In Progress"
@@ -728,15 +733,17 @@ if st.session_state.active_page == "Catalogue":
                         st.rerun()
 
         with e_tab_all:
-            render_executor_cards(current_assets)
+            render_executor_cards(current_assets, tab_prefix="all")
         with e_tab_sub:
-            render_executor_cards(subs_list)
+            render_executor_cards(subs_list, tab_prefix="sub")
         with e_tab_fin:
-            render_executor_cards(fin_list)
+            render_executor_cards(fin_list, tab_prefix="fin")
         with e_tab_cloud:
-            render_executor_cards(cloud_list)
+            render_executor_cards(cloud_list, tab_prefix="cloud")
         with e_tab_social:
-            render_executor_cards(social_list)
+            render_executor_cards(social_list, tab_prefix="social")
+        with e_tab_other:
+            render_executor_cards(other_list, tab_prefix="other")
 
 
 # =============================================================================

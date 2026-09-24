@@ -571,7 +571,7 @@ class Asset(BaseModel):
         elif isinstance(self.asset_info, SocialMediaAssetInfo):
             base.update({
                 "Profile URL": self.asset_info.profile_url or self.service_address or "N/A",
-                "Handle": self.asset_info.platform_handle or self.username,
+                "Handle": self.username,
                 "Memorialization": "Supported" if self.asset_info.memorialization_supported else "No",
                 "Legacy Contact": "Configured" if self.asset_info.has_legacy_contact_set else "Not Set",
             })
