@@ -35,6 +35,8 @@ def parse_and_extract(
     discovered = [
         Asset(
             service="Netflix",
+            service_address="https://netflix.com",
+            address="user.streaming@gmail.com",
             category="Subscription",
             cost_monthly=15.49,
             cost_display="$15.49/mo",
@@ -45,16 +47,20 @@ def parse_and_extract(
         ),
         Asset(
             service="GitHub Pro",
+            service_address="https://github.com",
+            address="octocat_dev",
             category="Subscription",
             cost_monthly=4.00,
             cost_display="$4.00/mo",
             heir="Unassigned",
             action="Transfer & Archive",
             status="Pending Review",
-            notes=f"Recurring software charge found in {fname}",
+            notes=f"Recurring developer charge found in {fname}",
         ),
         Asset(
             service="AWS Cloud Services",
+            service_address="https://aws.amazon.com",
+            address="cloud-admin@domain.com",
             category="Cloud Storage",
             cost_monthly=28.50,
             cost_display="$28.50/mo",

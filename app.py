@@ -44,14 +44,14 @@ if mode == "Account Owner":
             # Teammate 2 hook: src/digital_estate_manager/discovery/extractor.py
             result = parse_and_extract(uploaded_file)
 
-            # Avoid duplicate service entries
-            existing_services = {a["Service"].strip().lower() for a in st.session_state.assets}
+            # Avoid duplicates based on unique composite key (Service + Service Address + Account Address)
+            existing_keys = {Asset.from_table_row(a).unique_key for a in st.session_state.assets}
             added_count = 0
 
             for asset in result.extracted_assets:
-                if asset.service.lower() not in existing_services:
+                if asset.unique_key not in existing_keys:
                     st.session_state.assets.append(asset.to_table_row())
-                    existing_services.add(asset.service.lower())
+                    existing_keys.add(asset.unique_key)
                     added_count += 1
 
             st.success(
@@ -65,13 +65,23 @@ if mode == "Account Owner":
 
     # Catalog Management
     st.subheader("2. Your Cataloged Assets")
-    st.caption("Review and edit services, heirs, and assigned post-mortem actions.")
+    st.caption(
+        "Manage services, provider addresses (websites), and account addresses (e.g. emails/handles)."
+    )
     df = pd.DataFrame(st.session_state.assets)
     edited_df = st.data_editor(
         df,
         use_container_width=True,
         num_rows="dynamic",
         column_config={
+            "Service Address": st.column_config.LinkColumn(
+                "Service Address",
+                help="Website of provider (e.g. https://spotify.com) to distinguish same-name services",
+            ),
+            "Address": st.column_config.TextColumn(
+                "Address",
+                help="Account email, username, or identifier to separate multiple accounts under one service",
+            ),
             "Cost": st.column_config.TextColumn("Monthly / Value"),
             "Action": st.column_config.SelectboxColumn(
                 "Action",
@@ -109,17 +119,25 @@ else:
 
     for idx, asset_data in enumerate(st.session_state.assets):
         asset_obj = Asset.from_table_row(asset_data)
-        # Teammate 3 hook: src/digital_estate_manager/policies/rules.py
-        policy = lookup_policy(asset_obj.service)
+        # Teammate 3 hook: lookup by service name and service website to prevent ambiguous matches
+        policy = lookup_policy(
+            service_name=asset_obj.service,
+            service_address=asset_obj.service_address,
+        )
 
         status_emoji = "✅" if asset_obj.status == "Completed" else "⚙️"
+        acc_label = f" [{asset_obj.address}]" if asset_obj.address else ""
         expander_title = (
-            f"{status_emoji} {asset_obj.service} ({asset_obj.category}) — "
+            f"{status_emoji} {asset_obj.service}{acc_label} ({asset_obj.category}) — "
             f"Assigned to: {asset_obj.heir} [{asset_obj.status}]"
         )
 
         with st.expander(expander_title):
-            st.write(f"**Recommended Legal Action:** {asset_obj.action}")
+            # Header info showing distinct addresses
+            cols = st.columns([1, 1, 1])
+            cols[0].write(f"**Provider Website:** {asset_obj.service_address or 'N/A'}")
+            cols[1].write(f"**Account Address:** {asset_obj.address or 'N/A'}")
+            cols[2].write(f"**Recommended Action:** {asset_obj.action}")
 
             # Platform policy guidance
             if policy:
@@ -133,14 +151,16 @@ else:
                     for doc in policy.required_documents:
                         st.markdown(f"- {doc}")
 
-                if policy.portal_url:
-                    st.markdown(f"🔗 [Direct Support / Deceased Account Portal]({policy.portal_url})")
+                portal = policy.portal_url or asset_obj.service_address
+                if portal and portal.startswith("http"):
+                    st.markdown(f"🔗 [Direct Support / Deceased Account Portal]({portal})")
 
-            # Generated legal email draft (Teammate 3 hook: policies/generator.py)
+            # Generated legal notice/email draft with exact account & provider addresses
             email_draft = generate_action_email(
                 asset=asset_obj,
                 executor_name=asset_obj.heir if asset_obj.heir != "Unassigned" else "Authorized Heir",
                 deceased_name="John Doe",
+                account_email=asset_obj.address or None,
             )
             st.text_area(
                 "Generated Legal Request / Notice",
