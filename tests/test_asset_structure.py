@@ -94,11 +94,36 @@ def test_asset_creation_and_table_serialization():
 
 def test_default_assets_and_metrics():
     assets = get_default_assets()
-    assert len(assets) == 4
+    assert len(assets) == 5
     metrics = calculate_metrics(assets)
-    assert metrics["total_services"] == 4
-    assert metrics["unique_providers"] == 3
+    assert metrics["total_services"] == 5
+    assert metrics["unique_providers"] == 4
     assert float(metrics["monthly_drain_prevented"].replace("$", "")) > 0
+
+
+def test_owner_cancellation_and_type_specific_dict():
+    assets = get_default_assets()
+    sub = assets[0]
+    
+    # Test owner cancellation plan
+    plan = sub.cancel_policy.get_owner_cancellation_plan(
+        service=sub.service,
+        service_address=sub.service_address,
+        username=sub.username,
+    )
+    assert len(plan["steps"]) >= 3
+    assert "email_draft" in plan
+    assert sub.username in plan["email_draft"]
+
+    # Test type-specific dictionary representation
+    t_dict = sub.to_type_specific_dict()
+    assert "Monthly Cost" in t_dict
+    assert "Billing Cycle" in t_dict
+    assert t_dict["Service"] == "Spotify"
+
+    # Test marking as Cancelled
+    sub.status = "Cancelled"
+    assert sub.status == "Cancelled"
 
 
 if __name__ == "__main__":
@@ -106,5 +131,7 @@ if __name__ == "__main__":
     test_cancel_policy_execution()
     test_asset_creation_and_table_serialization()
     test_default_assets_and_metrics()
+    test_owner_cancellation_and_type_specific_dict()
     print("ALL TESTS PASSED SUCCESSFULLY!")
+
 

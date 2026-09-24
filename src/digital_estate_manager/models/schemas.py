@@ -306,6 +306,41 @@ class CancelPolicy(BaseModel):
                 "required_documents": self.required_documents,
             }
 
+    def get_owner_cancellation_plan(
+        self,
+        service: str,
+        service_address: str,
+        username: str,
+    ) -> Dict[str, Any]:
+        """Provides direct cancellation instructions, portal links, and customer service email drafts
+
+        for the live account owner.
+        """
+        portal_url = self.target_url or service_address
+        steps = [
+            f"Sign in to your {service} account using '{username}'.",
+            "Go to Account Settings > Subscriptions / Billing.",
+            "Click 'Cancel Subscription' or 'Manage Plan' and confirm cancellation.",
+            "Verify confirmation email to ensure recurring charges are terminated.",
+        ]
+        if self.support_email:
+            steps.append(f"If direct cancellation is unavailable, contact support at {self.support_email}.")
+
+        email_draft = (
+            f"Subject: Request to Cancel Service / Subscription - {service} ({username})\n\n"
+            f"To {service} Customer Support,\n\n"
+            f"I am requesting the immediate cancellation of my account / subscription associated with {username}.\n"
+            f"Please stop all recurring billing authorizations and send confirmation of cancellation.\n\n"
+            f"Thank you,\nAccount Owner"
+        )
+
+        return {
+            "portal_url": portal_url if (portal_url and portal_url.startswith("http")) else None,
+            "steps": steps,
+            "email_draft": email_draft,
+            "support_email": self.support_email,
+        }
+
 
 # =============================================================================
 # 4. Asset Model (Core Aggregate)
@@ -316,6 +351,7 @@ AssetStatus = Literal[
     "Pending Review",
     "In Progress",
     "Completed",
+    "Cancelled",
     "Archived",
 ]
 
@@ -497,6 +533,53 @@ class Asset(BaseModel):
             "Action": self.action,
             "Status": self.status,
         }
+
+    def to_type_specific_dict(self) -> Dict[str, Any]:
+        """Returns a tailored dictionary with column names specific to its asset type."""
+        base = {
+            "Service": self.service,
+            "Service Address": self.service_address,
+            "Username": self.username,
+            "Status": self.status,
+            "Heir": self.heir,
+        }
+        if isinstance(self.asset_info, SubscriptionAssetInfo):
+            base.update({
+                "Plan": self.asset_info.plan_tier or "Standard",
+                "Monthly Cost": self.cost_display,
+                "Billing Cycle": self.asset_info.billing_cycle.capitalize(),
+                "Renewal Date": self.asset_info.renewal_date or "N/A",
+                "Payment Method": self.asset_info.payment_method_hint or "N/A",
+            })
+        elif isinstance(self.asset_info, FinancialAssetInfo):
+            base.update({
+                "Institution": self.asset_info.institution_type.replace("_", " ").title(),
+                "Approx. Value": self.cost_display,
+                "Custodial": "Custodial" if self.asset_info.is_custodial else "Self-Custody",
+                "Probate Required": "Yes" if self.asset_info.requires_probate else "No",
+                "Account Hint": self.asset_info.account_number_hint or "N/A",
+            })
+        elif isinstance(self.asset_info, CloudStorageAssetInfo):
+            cap = f"{self.asset_info.storage_capacity_gb:.0f} GB" if self.asset_info.storage_capacity_gb else "Unknown"
+            used = f"{self.asset_info.used_storage_gb:.1f} GB" if self.asset_info.used_storage_gb is not None else "N/A"
+            base.update({
+                "Capacity": cap,
+                "Used": used,
+                "Data Types": ", ".join(self.asset_info.data_types) if self.asset_info.data_types else "Files",
+                "Sensitive Data": "Yes" if self.asset_info.contains_sensitive_data else "No",
+            })
+        elif isinstance(self.asset_info, SocialMediaAssetInfo):
+            base.update({
+                "Profile URL": self.asset_info.profile_url or self.service_address or "N/A",
+                "Handle": self.asset_info.platform_handle or self.username,
+                "Memorialization": "Supported" if self.asset_info.memorialization_supported else "No",
+                "Legacy Contact": "Configured" if self.asset_info.has_legacy_contact_set else "Not Set",
+            })
+        else:
+            base.update(self.asset_info.display_details())
+
+        return base
+
 
 
 # =============================================================================

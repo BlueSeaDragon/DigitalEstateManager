@@ -3,8 +3,11 @@
 from typing import Any, Dict, List
 from digital_estate_manager.models.schemas import (
     Asset,
+    CancelPolicy,
     CloudStorageAssetInfo,
+    DeathPolicy,
     FinancialAssetInfo,
+    SocialMediaAssetInfo,
     SubscriptionAssetInfo,
 )
 from digital_estate_manager.policies.rules import get_policies_for_service
@@ -85,6 +88,37 @@ def get_default_assets() -> List[Asset]:
             status="Active",
             notes="Hardware 2FA active on personal device",
         ),
+        Asset(
+            service="LinkedIn",
+            service_address="https://linkedin.com",
+            username="alex.professional@linkedin.com",
+            death_policy=DeathPolicy(
+                summary="LinkedIn allows accounts to be memorialized or closed upon submission of executor verification and death certificate.",
+                supports_legacy_contact=False,
+                official_portal_url="https://www.linkedin.com/help/linkedin/answer/a1340639",
+            ),
+            cancel_policy=CancelPolicy(
+                action_name="Memorialize Profile",
+                action_type="memorialize",
+                execution_method="web_portal",
+                target_url="https://www.linkedin.com/help/linkedin/answer/a1340639",
+                steps=[
+                    "Visit LinkedIn Deceased Member Request form",
+                    "Provide link to member profile",
+                    "Attach death certificate or obituary link",
+                    "Choose whether to memorialize or delete the account",
+                ],
+            ),
+            asset_info=SocialMediaAssetInfo(
+                profile_url="https://linkedin.com/in/alex-legacy",
+                platform_handle="alex-legacy",
+                memorialization_supported=True,
+                has_legacy_contact_set=False,
+            ),
+            heir="Jordan",
+            status="Active",
+            notes="Professional profile and contact network",
+        ),
     ]
 
 
@@ -92,10 +126,21 @@ def calculate_metrics(assets: List[Asset]) -> Dict[str, Any]:
     """Computes estate overview statistics."""
     total_services = len(assets)
     unique_providers = len({f"{a.service.lower()}|{a.service_address.lower()}" for a in assets})
-    monthly_drain = sum(
-        a.cost_monthly for a in assets
-        if a.cost_monthly and ("cancel" in a.cancel_policy.action_name.lower() or a.cancel_policy.action_type == "cancel_subscription")
+    active_services = [a for a in assets if a.status != "Cancelled"]
+    cancelled_services = [a for a in assets if a.status == "Cancelled"]
+
+    # Active monthly recurring drain
+    active_monthly_spend = sum(
+        a.cost_monthly for a in active_services
+        if a.cost_monthly
     )
+
+    # Monthly drain prevented (cancelled items or flagged for cancellation)
+    drain_prevented = sum(
+        a.cost_monthly for a in assets
+        if a.cost_monthly and (a.status == "Cancelled" or "cancel" in a.cancel_policy.action_name.lower())
+    )
+
     critical_recoveries = [
         a for a in assets
         if isinstance(a.asset_info, FinancialAssetInfo)
@@ -106,7 +151,10 @@ def calculate_metrics(assets: List[Asset]) -> Dict[str, Any]:
     return {
         "total_services": total_services,
         "unique_providers": unique_providers,
-        "monthly_drain_prevented": f"${monthly_drain:.2f}" if monthly_drain > 0 else "$0.00",
+        "active_count": len(active_services),
+        "cancelled_count": len(cancelled_services),
+        "active_monthly_spend": f"${active_monthly_spend:.2f}",
+        "monthly_drain_prevented": f"${drain_prevented:.2f}" if drain_prevented > 0 else "$0.00",
         "critical_recovery_count": len(critical_recoveries),
         "critical_services_summary": f"{len(critical_recoveries)} ({', '.join(a.service for a in critical_recoveries)})"
         if critical_recoveries
