@@ -1,7 +1,11 @@
 ﻿import os
 import json
 from openai import OpenAI
-from ddgs import DDGS
+
+try:
+    from ddgs import DDGS
+except ImportError:
+    from duckduckgo_search import DDGS
 
 client = OpenAI(
     base_url="https://app.swisscom.ch/ai/api/v1",
