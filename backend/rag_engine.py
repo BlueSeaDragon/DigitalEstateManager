@@ -36,12 +36,12 @@ def fetch_web_results_safe(query: str, max_retries: int = 4) -> list:
 
 def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscription", mode: str = "during_life") -> dict:
     if mode == "after_death":
-        query = f"{provider_name} Todesfall Abo Kündigung Rückerstattung Todesurkunde Schweiz"
+        query = f"{provider_name} Anthropic support contact email cancellation Todesfall Kündigung Schweiz"
     else:
-        query = f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo"
+        query = f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo Support Contact Email"
     
     search_results = fetch_web_results_safe(query)
-    context_str = "\n\n".join(search_results) if search_results else f"Rely on official Swiss facts specifically for {provider_name}."
+    context_str = "\n\n".join(search_results) if search_results else f"Rely on official Swiss and global support facts for {provider_name}."
     
     system_prompt = f"You are a Swiss legal and estate assistant analyzing cancellation policies strictly for '{provider_name}'. Output valid JSON only."
     
@@ -51,12 +51,14 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
     Provided Sub-Type: {sub_type}
     Mode: {mode}
     
-    STRICT COMPLIANCE RULES:
-    1. NEVER mention or introduce third-party URLs/emails for unrelated companies.
+    STRICT COMPLIANCE & CONTACT EXTRACTION RULES:
+    1. PROVIDE DIRECT CONTACT INFO:
+       - If an email, portal URL, or contact link exists for {provider_name} (e.g. support@anthropic.com, https://support.anthropic.com, support@sbb.ch), YOU MUST INCLUDE IT in 'contact_email' and 'portal_url'.
+       - DO NOT leave 'portal_url' or 'contact_email' empty if the official support domain or address is standard for {provider_name}.
     2. If Mode is 'after_death':
-       - Under Swiss Law (OR Art. 405), contracts terminate immediately upon death. Minimum contract duration and notice periods DO NOT apply. Set 'notice_period' and 'minimum_contract_duration' to "Immediate (upon notification of death)".
-       - List official required documents in 'required_docs' (MUST include "Todesurkunde" / Death Certificate and optional "Erbenschein").
-       - Detail step-by-step estate cancellation procedures in 'channel_instructions' (e.g., submitting death certificate to customer service or SwissPass care service for pro-rata refund).
+       - Under Swiss Law (OR Art. 405), contracts terminate immediately upon death. Set 'notice_period' and 'minimum_contract_duration' to "Immediate (upon notification of death)".
+       - List official required documents in 'required_docs' (MUST include "Todesurkunde (Death Certificate)" and "Erbenschein").
+       - Step-by-step instructions in 'channel_instructions' MUST reference the exact contact email or portal provided in the JSON fields.
     3. If Mode is 'during_life':
        - Provide standard notice periods and minimum contract terms.
 
