@@ -1,4 +1,5 @@
 ﻿from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import os
@@ -63,7 +64,20 @@ def generate_cancel_docs(data: CancelActionRequest):
         return {
             "letter_text": letter_text,
             "direct_links": policy_info.get("direct_links", []),
-            "pdf_filename": pdf_filename
+            "pdf_filename": pdf_filename,
+            "download_url": f"/api/download-pdf/{pdf_filename}"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/download-pdf/{filename}")
+def download_pdf(filename: str):
+    pdf_path = os.path.join("backend", filename)
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF file not found")
+    
+    return FileResponse(
+        path=pdf_path,
+        filename=filename,
+        media_type="application/pdf"
+    )
