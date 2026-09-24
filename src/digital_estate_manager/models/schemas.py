@@ -353,6 +353,8 @@ AssetStatus = Literal[
     "Completed",
     "Cancelled",
     "Archived",
+    "Removed",
+    "Wrongly Attributed",
 ]
 
 
@@ -517,7 +519,7 @@ class Asset(BaseModel):
             cancel_policy=cancel_policy,
             asset_info=info,
             heir=heir,
-            status=status if status in ["Active", "Pending Review", "In Progress", "Completed", "Archived"] else "Active",
+            status=status if status in ["Active", "Pending Review", "In Progress", "Completed", "Cancelled", "Archived", "Removed", "Wrongly Attributed"] else "Active",
             notes=str(row.get("Notes", "")) if "Notes" in row else None,
         )
 

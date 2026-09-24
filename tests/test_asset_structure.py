@@ -126,12 +126,55 @@ def test_owner_cancellation_and_type_specific_dict():
     assert sub.status == "Cancelled"
 
 
+def test_owner_removal_and_wrongly_attributed_audit():
+    assets = get_default_assets()
+    initial_metrics = calculate_metrics(assets)
+    initial_spend = float(initial_metrics["active_monthly_spend"].replace("$", ""))
+    initial_total = initial_metrics["total_services"]
+
+    # 1. Owner removes an account
+    target = assets[0]
+    sub_cost = target.cost_monthly
+    target.status = "Removed"
+
+    metrics_after_remove = calculate_metrics(assets)
+    new_spend = float(metrics_after_remove["active_monthly_spend"].replace("$", ""))
+    assert metrics_after_remove["removed_count"] == 1
+    assert round(new_spend, 2) == round(initial_spend - sub_cost, 2)
+    assert metrics_after_remove["total_services"] == initial_total - 1
+
+    # 2. Owner restores the account
+    target.status = "Active"
+    metrics_after_restore = calculate_metrics(assets)
+    assert metrics_after_restore["removed_count"] == 0
+    assert float(metrics_after_restore["active_monthly_spend"].replace("$", "")) == initial_spend
+
+    # 3. Heir/Executor flags an account as Wrongly Attributed (never deleted)
+    fin_asset = assets[2]
+    fin_asset.status = "Wrongly Attributed"
+    metrics_after_wrong = calculate_metrics(assets)
+    assert metrics_after_wrong["wrongly_attributed_count"] == 1
+    # Remains in total estate records
+    assert len(assets) == 5
+
+    # 4. Table serialization preserves these statuses
+    row_removed = target.to_table_row()
+    row_removed["Status"] = "Removed"
+    rebuilt_rem = Asset.from_table_row(row_removed)
+    assert rebuilt_rem.status == "Removed"
+
+    row_wrong = fin_asset.to_table_row()
+    rebuilt_wrong = Asset.from_table_row(row_wrong)
+    assert rebuilt_wrong.status == "Wrongly Attributed"
+
+
 if __name__ == "__main__":
     test_asset_info_polymorphism()
     test_cancel_policy_execution()
     test_asset_creation_and_table_serialization()
     test_default_assets_and_metrics()
     test_owner_cancellation_and_type_specific_dict()
+    test_owner_removal_and_wrongly_attributed_audit()
     print("ALL TESTS PASSED SUCCESSFULLY!")
 
 
