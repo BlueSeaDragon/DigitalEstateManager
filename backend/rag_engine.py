@@ -5,7 +5,6 @@ import random
 from openai import OpenAI
 from fastapi import HTTPException
 
-# Reads strictly from active environment variables
 SWISSCOM_BASE_URL = os.getenv("SWISSCOM_BASE_URL", "https://api.swisscom.com/products/swiss-ai-weeks/apertus-1.5-70b/v1")
 SWISSCOM_API_KEY = os.getenv("SWISSCOM_API_KEY", "")
 
@@ -36,7 +35,7 @@ def fetch_web_results_safe(query: str, max_retries: int = 4) -> list:
     return []
 
 def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscription", mode: str = "during_life") -> dict:
-    query = f"{provider_name} {sub_type} Kündigung Schweiz Abo" if mode != "after_death" else f"{provider_name} {sub_type} Kündigung Nachlass Todesfall Schweiz"
+    query = f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo" if mode != "after_death" else f"{provider_name} {sub_type} Kündigung Nachlass Todesfall Schweiz"
     
     search_results = fetch_web_results_safe(query)
     context_str = "\n\n".join(search_results) if search_results else f"Rely on official Swiss facts specifically for {provider_name}."
@@ -52,8 +51,10 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
     1. NEVER mention or introduce third-party URLs/emails for unrelated companies.
     2. If Provided Sub-Type is general (e.g. "subscription", "Abo", "membership") AND {provider_name} has distinct rules for Monthly vs Yearly plans, set "requires_sub_type_selection": true and list "sub_type_options".
     3. If Provided Sub-Type is specific (e.g., "GA Generalabonnement", "Halbtax", "Jahresabo"), set "requires_sub_type_selection": false AND provide the exact channel and instructions for THAT specific plan.
+    4. Clearly state the minimum duration before cancellation is legally permitted in 'minimum_contract_duration' (e.g., '6 months', '1 year', or 'None / Monthly').
 
     Return JSON format:
+    - minimum_contract_duration: string
     - notice_period: string
     - primary_channel: string MUST BE ONE OF ["web_portal", "email", "registered_letter", "app_store", "phone_call"]
     - requires_sub_type_selection: boolean
