@@ -17,10 +17,19 @@ AI-powered digital asset discovery and post-mortem executor platform.
    pip install -e ./subscription_finder
    pip install -e .
    ```
+   > **Already set up before the subscription finder was added?** After pulling, run
+   > `pip install -e ./subscription_finder` once. Otherwise discovery shows
+   > "The subscription finder is not installed."
 
 3. **Configure Gmail and the AI model** (optional; without them, upload a JSONL transaction file and run rules-only):
    - Put the Google OAuth **Web application** client JSON at `config/credentials_web.json` (gitignored), with
      `http://localhost:8501` as an authorized redirect URI. The CLI keeps using its own desktop client.
+     - The file is **not in the repository**. Ask the project owner for it, or create your own in
+       [Google Cloud Console](https://console.cloud.google.com/apis/credentials): enable the Gmail API, then
+       *Create credentials → OAuth client ID → Web application*, add the redirect URI above and download the JSON.
+     - While the OAuth app is in **Testing** mode, only Google accounts listed as **test users** on the
+       OAuth consent screen can connect; everyone else gets an "access blocked" error from Google.
+       Ask the project owner to add your account.
    - Copy `.env.example` to `.env` and set `SWISSCOM_API_KEY` / `SWISSCOM_BASE_URL`.
 
 4. **Run the Streamlit application** (from the repository root):
