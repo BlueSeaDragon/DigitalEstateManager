@@ -1,0 +1,146 @@
+[
+  {
+    "website": "amazon.com",
+    "legacy_policy_url": "https://www.amazon.com/gp/help/customer/display.html?nodeId=TzcJJiVFnIi3pG2yDA",
+    "summary": "Amazon provides a dedicated email address for bereavement support requests. Requests require a death certificate and the account's associated email or phone number. (Based on the search result only: the crawler could not read the page itself.)",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": null,
+      "subscription_or_balance_addressed": null,
+      "proof_required": null
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "apple.com",
+    "legacy_policy_url": "https://support.apple.com/en-us/102431",
+    "summary": "Apple provides options for loved ones to request access to or delete a deceased person’s Apple Account and associated data after death. Access requires verified legal documentation such as a death certificate or court order, and the process varies by country. Apple also removes Activation Lock automatically after a Legacy Contact request or account deletion is completed.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": true,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": null,
+      "proof_required": true
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "coinbase.com",
+    "legacy_policy_url": "https://help.coinbase.com/en/coinbase/managing-my-account/other/how-do-i-gain-access-to-a-deceased-family-members-coinbase-account",
+    "summary": "Coinbase provides a process for claiming a deceased family member's account using probate documents, a death certificate, and a signed letter. The company does not support naming a beneficiary for individual accounts, and estate planning documents determine ownership transfer.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": false,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": true,
+      "proof_required": true
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "dropbox.com",
+    "legacy_policy_url": "https://help.dropbox.com/account-settings/access-account-of-someone-who-passed-away",
+    "summary": "Dropbox requires proof of death and legal right to access a deceased person's account. Requests must be made via a support ticket with specific documentation, including a court order. Dropbox cannot guarantee access will be granted.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": null,
+      "proof_required": true
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "google.com",
+    "legacy_policy_url": "https://support.google.com/accounts/troubleshooter/6357590?hl=en",
+    "summary": "Google allows immediate family members or representatives to request account closure or content access for a deceased user after a careful review. Inactive Account Manager lets users pre-appoint someone to manage their account if it becomes inactive. Google cannot provide passwords and will not release account contents after closure.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": true,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": null,
+      "proof_required": null
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "linkedin.com",
+    "legacy_policy_url": "not found",
+    "summary": "none",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": null,
+      "subscription_or_balance_addressed": null,
+      "proof_required": null
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "microsoft.com",
+    "legacy_policy_url": "https://support.microsoft.com/en-us/accounts-billing/manage/accessing-outlook-com-onedrive-and-other-microsoft-services-when-someone-has-died",
+    "summary": "Microsoft cannot provide account access to non-account holders due to privacy and legal reasons. Accounts become inactive after two years of inactivity and are permanently deleted. Subscriptions should be cancelled to prevent charges.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": null,
+      "subscription_or_balance_addressed": true,
+      "proof_required": null
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "netflix.com",
+    "legacy_policy_url": "https://help.netflix.com/en/node/110165",
+    "summary": "Netflix allows cancellation of a deceased member's account either by someone with account access or by providing the owner's email/phone and payment info to Netflix support. The page explains how to cancel the account on behalf of a deceased person.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": false,
+      "subscription_or_balance_addressed": true,
+      "proof_required": true
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "paypal.com",
+    "legacy_policy_url": "https://securepayments.paypal.com/au/cshelp/article/how-do-i-close-the-paypal-account-of-a-deceased-relative-help220",
+    "summary": "PayPal requires the authorised executor or administrator of a deceased person's estate to close the account. The executor must provide specific documentation, including a death certificate and proof of their authority, to bereavement@paypal.com.au. PayPal can disburse remaining funds to a linked bank account or via wire transfer.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": false,
+      "subscription_or_balance_addressed": true,
+      "proof_required": true
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "spotify.com",
+    "legacy_policy_url": "not found",
+    "summary": "none",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": null,
+      "subscription_or_balance_addressed": null,
+      "proof_required": null
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "swisscom.ch",
+    "legacy_policy_url": "https://www.swisscom.ch/en/residential/help/bill-and-contract/death.html",
+    "summary": "Swisscom allows you to either cancel or take over a deceased person's subscription immediately at no extra cost. To take over, you must provide identification and a death certificate in person at a Swisscom Shop. Prepaid numbers can be transferred automatically, but unused for 12 months will be deactivated.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": true,
+      "proof_required": true
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "ubs.com",
+    "legacy_policy_url": "https://www.ubs.com/ch/en/help/account/case-of-death.html",
+    "summary": "UBS Switzerland AG requires a death certificate to register a client's death and process inheritance. Heirs need a certificate of inheritance to access information and assets, while executors and authorized representatives may also receive information after proper identification. Joint account holders may continue to manage assets, but heirs only receive information up to the date of death.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": null,
+      "subscription_or_balance_addressed": null,
+      "proof_required": true
+    },
+    "checked": "2026-09-24"
+  }
+]

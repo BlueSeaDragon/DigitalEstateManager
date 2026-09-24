@@ -80,3 +80,58 @@ DigitalEstateManager/
 - **Teammate 3 (Policies & Legal Guidance)**:
   - Works in [src/digital_estate_manager/policies/rules.py](file:///c:/Users/oarevian/OneDrive%20-%20Arev%20Finances/Documents/DEM/DigitalEstateManager/src/digital_estate_manager/policies/rules.py) and [generator.py](file:///c:/Users/oarevian/OneDrive%20-%20Arev%20Finances/Documents/DEM/DigitalEstateManager/src/digital_estate_manager/policies/generator.py).
   - Adds platform-specific requirements, document checklists, and email generation templates.
+
+---
+
+## 🔎 Legacy Policy Crawler (`src/legacy_policy_crawler/`)
+
+For a company website it finds the page that states what happens to an account or subscription after the holder's death, and saves the link, a short summary and a few tick boxes in `data/legacy_policies.json`. It only reads public web pages: it never logs in to accounts and does not cancel anything (that is a separate crawler). The agent runs on Apertus 1.5 70B (Swisscom AI Platform).
+
+**Setup** (after pulling, run `pip install -e .` again: new dependencies `httpx`, `beautifulsoup4`, `python-dotenv`, `ddgs`)
+
+1. Copy `.env.example` to `.env` (git-ignored) and paste your Swisscom token: `APERTUS_API_KEY=<token>`. Never commit or share it. The default endpoint is the Swiss AI Weeks one (`.../products/swiss-ai-weeks/apertus-1.5-70b/v1`); a key only works on the product URL it belongs to, so set `APERTUS_BASE_URL` in `.env` if yours differs.
+2. Check token, URL and model: `python -m legacy_policy_crawler.llm --ping`
+
+> Windows on ARM: the x64 Miniconda runs fine under emulation. To avoid Anaconda's channel licence prompt, create the environment with `conda create -n DEM -c conda-forge --override-channels python=3.12 pip`.
+
+**Use**
+
+```bash
+python -m legacy_policy_crawler google.com spotify.com   # JSON on stdout, saved in data/legacy_policies.json
+python -m legacy_policy_crawler netflix.com --trace      # also show the agent's steps (stderr)
+python -m legacy_policy_crawler netflix.com --refresh    # crawl again although the website is saved
+pytest -q                                                # offline tests, no token needed
+```
+
+```python
+from legacy_policy_crawler import lookup_legacy_policy
+
+record = lookup_legacy_policy("https://spotify.com")  # 10-40 s the first time, instant afterwards
+```
+
+**Output** (`data/legacy_policies.json`, one record per website):
+
+```json
+{
+  "website": "acme.com",
+  "legacy_policy_url": "https://help.acme.com/deceased-users",
+  "summary": "Two to three sentences, only what the page states.",
+  "tick_boxes": {
+    "owner_can_appoint_successor": false,
+    "heirs_can_request_access": true,
+    "subscription_or_balance_addressed": null,
+    "proof_required": true
+  },
+  "checked": "2026-09-24"
+}
+```
+
+`true` / `false` means the page says so, `null` means it does not say. A provider without a clear legacy policy is a valid result: `legacy_policy_url` is `"not found"` and `summary` is `"none"`.
+
+Quota: Apertus allows 5 requests/s and 10M input / 2.5M output tokens. The client stays at 4 requests/s and prints the tokens it used (a lookup costs roughly 3-10k input tokens); saved records are reused, so a website costs tokens only once.
+
+Good to know:
+- Summaries are machine-written from the linked page: check the source before relying on them. Only company pages count; community, forum and Q&A pages are never used.
+- A tick box is `true`/`false` only if the model quoted the page for it and the quote is really on the page; otherwise it is `null`.
+- Some sites block bots or disallow the page in `robots.txt` (the crawler respects both). If a promising page cannot be read, the record links to it and the summary comes from the public search result; it says so, and the tick boxes stay `null`.
+- Only HTML pages are read (no PDF or Word files). The web search is keyless and can be throttled; then the agent navigates from the homepage instead.
