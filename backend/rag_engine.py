@@ -35,12 +35,16 @@ def fetch_web_results_safe(query: str, max_retries: int = 4) -> list:
     return []
 
 def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscription", mode: str = "during_life") -> dict:
-    query = f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo" if mode != "after_death" else f"{provider_name} {sub_type} Kündigung Nachlass Todesfall Schweiz"
+    if mode == "after_death":
+        query = f"{provider_name} Todesfall Abo Kündigung Rückerstattung Todesurkunde Schweiz"
+    else:
+        query = f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo"
     
     search_results = fetch_web_results_safe(query)
     context_str = "\n\n".join(search_results) if search_results else f"Rely on official Swiss facts specifically for {provider_name}."
     
-    system_prompt = f"You are a Swiss legal assistant analyzing cancellation policies strictly for '{provider_name}'. Output valid JSON only."
+    system_prompt = f"You are a Swiss legal and estate assistant analyzing cancellation policies strictly for '{provider_name}'. Output valid JSON only."
+    
     user_prompt = f"""
     Context: {context_str}
     Target Provider: {provider_name}
@@ -49,9 +53,12 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
     
     STRICT COMPLIANCE RULES:
     1. NEVER mention or introduce third-party URLs/emails for unrelated companies.
-    2. If Provided Sub-Type is general (e.g. "subscription", "Abo", "membership") AND {provider_name} has distinct rules for Monthly vs Yearly plans, set "requires_sub_type_selection": true and list "sub_type_options".
-    3. If Provided Sub-Type is specific (e.g., "GA Generalabonnement", "Halbtax", "Jahresabo"), set "requires_sub_type_selection": false AND provide the exact channel and instructions for THAT specific plan.
-    4. Clearly state the minimum duration before cancellation is legally permitted in 'minimum_contract_duration' (e.g., '6 months', '1 year', or 'None / Monthly').
+    2. If Mode is 'after_death':
+       - Under Swiss Law (OR Art. 405), contracts terminate immediately upon death. Minimum contract duration and notice periods DO NOT apply. Set 'notice_period' and 'minimum_contract_duration' to "Immediate (upon notification of death)".
+       - List official required documents in 'required_docs' (MUST include "Todesurkunde" / Death Certificate and optional "Erbenschein").
+       - Detail step-by-step estate cancellation procedures in 'channel_instructions' (e.g., submitting death certificate to customer service or SwissPass care service for pro-rata refund).
+    3. If Mode is 'during_life':
+       - Provide standard notice periods and minimum contract terms.
 
     Return JSON format:
     - minimum_contract_duration: string
@@ -116,7 +123,7 @@ def generate_cancellation_letter(provider_name: str, sub_type: str, person_name:
     - DO NOT include sender address, recipient address, or date headers.
     - Start directly with the Subject Line ("Betreff: ...").
     - Include formal greeting ("Sehr geehrte Damen und Herren,").
-    - If Mode is 'after_death', explicitly mention contract termination due to death under Swiss Code of Obligations (OR Art. 405).
+    - If Mode is 'after_death', explicitly mention contract termination due to death under Swiss Code of Obligations (OR Art. 405) and reference attached Todesurkunde.
     - If Mode is 'during_life', state cancellation per notice terms.
     - End with "Mit freundlichen Grüssen,".
     """
