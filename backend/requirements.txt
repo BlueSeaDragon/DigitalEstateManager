@@ -4,4 +4,4 @@ openai
 pydantic
 fpdf2
 python-dotenv
-duckduckgo-search
+ddgs
