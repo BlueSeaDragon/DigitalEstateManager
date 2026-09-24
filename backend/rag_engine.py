@@ -5,21 +5,24 @@ import random
 from openai import OpenAI
 from fastapi import HTTPException
 
+# Reads strictly from active environment variables
+SWISSCOM_BASE_URL = os.getenv("SWISSCOM_BASE_URL", "https://api.swisscom.com/products/swiss-ai-weeks/apertus-1.5-70b/v1")
+SWISSCOM_API_KEY = os.getenv("SWISSCOM_API_KEY", "")
+
 try:
     from ddgs import DDGS
 except ImportError:
     from duckduckgo_search import DDGS
 
 client = OpenAI(
-    base_url="https://app.swisscom.ch/ai/api/v1",
-    api_key=os.getenv("SWISSCOM_API_KEY", ""),
+    base_url=SWISSCOM_BASE_URL,
+    api_key=SWISSCOM_API_KEY,
     timeout=20.0
 )
 
 APERTUS_MODEL = "swiss-ai/Apertus-v1.5-70B"
 
 def fetch_web_results_safe(query: str, max_retries: int = 4) -> list:
-    """Fetches search with exponential backoff to avoid 429 rate limit triggers."""
     for attempt in range(max_retries):
         try:
             with DDGS() as ddgs:
@@ -28,7 +31,6 @@ def fetch_web_results_safe(query: str, max_retries: int = 4) -> list:
                     return [f"Title: {r['title']}\nSnippet: {r['body']}\nURL: {r['href']}" for r in results]
         except Exception:
             pass
-        # Exponential backoff with jitter: 0.5s, 1.0s, 2.0s + jitter
         delay = (0.5 * (2 ** attempt)) + random.uniform(0.1, 0.4)
         time.sleep(delay)
     return []
@@ -66,7 +68,6 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
     - mourning_portal_url: string
     """
     
-    # 5 retries using exponential backoff (total wait ~15-18s max window)
     max_attempts = 5
     for attempt in range(max_attempts):
         try:
@@ -92,10 +93,9 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
             if attempt == max_attempts - 1:
                 raise HTTPException(
                     status_code=504,
-                    detail=f"Swisscom Apertus connection unavailable after exponential backoff retries. Details: {str(e)}"
+                    detail=f"Swisscom Apertus API failure. Details: {str(e)}"
                 )
             
-            # Rate-limit compliant delay calculation
             delay = (0.5 * (2 ** attempt)) + random.uniform(0.1, 0.5)
             time.sleep(delay)
 
@@ -133,6 +133,6 @@ def generate_cancellation_letter(provider_name: str, sub_type: str, person_name:
             return response.choices[0].message.content
         except Exception:
             if attempt == 4:
-                raise HTTPException(status_code=504, detail="Letter generation failed after exponential backoff.")
+                raise HTTPException(status_code=504, detail="Letter generation failed after retries.")
             delay = (0.5 * (2 ** attempt)) + random.uniform(0.1, 0.5)
             time.sleep(delay)
