@@ -10,6 +10,7 @@ from digital_estate_manager.models.schemas import (
     SocialMediaAssetInfo,
     SubscriptionAssetInfo,
 )
+from digital_estate_manager.policies.legacy import with_legacy_record
 from digital_estate_manager.policies.rules import get_policies_for_service
 
 
@@ -110,10 +111,13 @@ def get_default_assets() -> List[Asset]:
             service="LinkedIn",
             service_address="https://linkedin.com",
             username="alex.professional@linkedin.com",
-            death_policy=DeathPolicy(
-                summary="LinkedIn allows accounts to be memorialized or closed upon submission of executor verification and death certificate.",
-                supports_legacy_contact=False,
-                official_portal_url="https://www.linkedin.com/help/linkedin/answer/a1340639",
+            death_policy=with_legacy_record(
+                DeathPolicy(
+                    summary="LinkedIn allows accounts to be memorialized or closed upon submission of executor verification and death certificate.",
+                    supports_legacy_contact=False,
+                    official_portal_url="https://www.linkedin.com/help/linkedin/answer/a1340639",
+                ),
+                "https://linkedin.com",
             ),
             cancel_policy=CancelPolicy(
                 action_name="Memorialize Profile",

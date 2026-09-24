@@ -206,6 +206,14 @@ class DeathPolicy(BaseModel):
     official_portal_url: Optional[str] = Field(default=None, description="Direct URL to provider's deceased request portal")
     security_warning: Optional[str] = Field(default=None, description="Security alert (e.g. 2FA restrictions, impersonation fraud)")
 
+    # Set by the AI legacy policy crawler (policies/legacy.py); defaults for hand-written policies.
+    ai_generated: bool = Field(default=False, description="Summary and link come from the AI crawler")
+    policy_found: Optional[bool] = Field(default=None, description="Crawler result: found, not found, or None if not crawled")
+    source_checked: Optional[str] = Field(default=None, description="Date the crawler checked the page")
+    tick_boxes: Dict[str, Optional[bool]] = Field(
+        default_factory=dict, description="Crawler tick boxes: True yes, False no, None not stated"
+    )
+
 
 # =============================================================================
 # 3. Cancel Policy (Flexible Action Execution & Dispatcher)

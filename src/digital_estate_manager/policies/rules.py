@@ -1,5 +1,6 @@
 from typing import Dict, Optional, Tuple
 from digital_estate_manager.models.schemas import CancelPolicy, DeathPolicy
+from digital_estate_manager.policies.legacy import with_legacy_record
 
 
 # =============================================================================
@@ -134,7 +135,20 @@ def get_policies_for_service(
     service_name: str,
     service_address: Optional[str] = None,
 ) -> Tuple[DeathPolicy, CancelPolicy]:
-    """Retrieves or synthesizes the appropriate DeathPolicy and CancelPolicy for a service."""
+    """The DeathPolicy and CancelPolicy for a service.
+
+    A saved record of the AI legacy policy crawler for the service's website is applied on top
+    of the DeathPolicy (see policies/legacy.py).
+    """
+    death_pol, cancel_pol = _build_policies(service_name, service_address)
+    return with_legacy_record(death_pol, service_address), cancel_pol
+
+
+def _build_policies(
+    service_name: str,
+    service_address: Optional[str] = None,
+) -> Tuple[DeathPolicy, CancelPolicy]:
+    """The hand-written policies for a known service, else generic ones."""
     cleaned_name = service_name.strip().lower()
     cleaned_address = (service_address or "").strip().lower()
 

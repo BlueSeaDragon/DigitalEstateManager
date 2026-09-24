@@ -21,6 +21,17 @@ from digital_estate_manager.models import (
     SubscriptionAssetInfo,
 )
 from digital_estate_manager.policies import generate_action_email
+from digital_estate_manager.policies.legacy import (
+    AI_NOTICE,
+    apply_legacy_record,
+    days_since_checked,
+    is_stale,
+    legacy_record,
+    policy_marks,
+    policy_table_row,
+    provider_key,
+    refresh_legacy_policy,
+)
 from digital_estate_manager.policies.rules import get_policies_for_service
 from digital_estate_manager.vault import calculate_metrics, get_default_assets
 
@@ -191,6 +202,37 @@ mode = st.sidebar.radio("View Mode", ["Account Owner", "Heir / Executor"])
 st.sidebar.caption(
     "💡 **Account Owner** manages active subscriptions and cancellations; **Heir / Executor** manages post-mortem legal workflows."
 )
+
+
+def render_policy_summary(asset: Asset, death_pol: DeathPolicy, cancel_pol: CancelPolicy):
+    """Posthumous policy summary and link. AI-crawler text is labelled and comes with a caution."""
+    if not death_pol.ai_generated:
+        st.info(f"**{asset.service} Posthumous Policy:** {death_pol.summary}")
+    elif death_pol.policy_found:
+        st.info(f"🤖 **AI-generated summary of {asset.service}'s posthumous policy:** {death_pol.summary}")
+    else:
+        st.info(f"🤖 **{asset.service} posthumous policy:** {death_pol.summary}")
+
+    if death_pol.ai_generated:
+        checked = f" Checked {death_pol.source_checked}." if death_pol.source_checked else ""
+        if is_stale(death_pol.source_checked):
+            checked += " Old result: the owner can refresh it in the Legacy Policies tab."
+        st.caption(f"⚠️ {AI_NOTICE}{checked}")
+        if death_pol.policy_found:
+            marks = " · ".join(f"{label}: {mark}" for label, mark in policy_marks(death_pol.tick_boxes))
+            st.caption(f"{marks} (✔ yes, ✘ no, – not stated)")
+
+    if death_pol.security_warning:
+        st.warning(f"**Security Alert:** {death_pol.security_warning}")
+
+    portal = death_pol.official_portal_url or cancel_pol.target_url or asset.service_address
+    if portal and portal.startswith("http"):
+        if death_pol.policy_found is False:
+            st.markdown(f"🔗 [Possibly useful link (unverified)]({portal})")
+        elif death_pol.policy_found:
+            st.markdown(f"🔗 [Source page of this policy]({portal})")
+        else:
+            st.markdown(f"🔗 [Direct Support / Deceased Account Portal]({portal})")
 
 
 # =============================================================================
@@ -673,12 +715,13 @@ if st.session_state.active_page == "Catalogue":
             "Select an asset category below to review items, cancel active services, or add a new asset."
         )
 
-        tab_sub, tab_fin, tab_cloud, tab_social, tab_other, tab_removed, tab_all = st.tabs([
+        tab_sub, tab_fin, tab_cloud, tab_social, tab_other, tab_policy, tab_removed, tab_all = st.tabs([
             f"💳 Subscriptions ({len(subs_list)})",
             f"💰 Financial & Crypto ({len(fin_list)})",
             f"☁️ Cloud Storage ({len(cloud_list)})",
             f"📱 Social Media ({len(social_list)})",
             f"📁 Other ({len(other_list)})",
+            "🕊️ Legacy Policies",
             f"🗑️ Removed ({len(removed_list)})",
             f"📋 Master Catalog ({len(current_assets)})",
         ])
@@ -952,6 +995,57 @@ if st.session_state.active_page == "Catalogue":
             else:
                 st.info("No other accounts cataloged. Click '➕ Add Asset' above to add one.")
 
+        # --- TAB: LEGACY POLICIES (AI-gathered information) ---
+        with tab_policy:
+            st.markdown("#### 🕊️ Legacy Policies")
+            st.caption("What each provider says happens to an account after death, gathered by an AI crawler from official websites.")
+            st.warning(f"🤖 **AI-generated summaries.** {AI_NOTICE}")
+
+            policy_assets = [a for a in current_assets if a.status not in ("Removed", "Wrongly Attributed")]
+            if policy_assets:
+                st.dataframe(
+                    pd.DataFrame([policy_table_row(a) for a in policy_assets]),
+                    width='stretch',
+                    hide_index=True,
+                    column_config={"Link": st.column_config.LinkColumn("Link")},
+                )
+                st.caption("✔ yes, ✘ no, – not stated on the page.")
+
+                # A button for each website with no result, no policy found, or an old result
+                to_look_up = {}
+                for a in policy_assets:
+                    key = provider_key(a.service_address)
+                    pol = a.death_policy
+                    if key and (not pol.ai_generated or pol.policy_found is False or is_stale(pol.source_checked)):
+                        to_look_up.setdefault(key, a)
+                if to_look_up:
+                    st.markdown("##### 🔎 Look up or refresh a policy")
+                    new_count = sum(1 for a in to_look_up.values() if not a.death_policy.ai_generated)
+                    if new_count:
+                        st.info(f"{new_count} website(s) have no AI result yet. Look them up below.")
+                    st.caption("Searches the provider's website (10–40 seconds). Needs the Apertus token in `.env`.")
+                for key, a in to_look_up.items():
+                    pol = a.death_policy
+                    if not pol.ai_generated:
+                        verb = "Look up"
+                    elif is_stale(pol.source_checked):
+                        verb = f"Refresh (checked {days_since_checked(pol.source_checked)} days ago)"
+                    else:
+                        verb = "Try again"
+                    if st.button(f"🔎 {verb}: {a.service} ({key})", key=f"lookup_policy_{key}"):
+                        with st.spinner(f"Searching {key} for its legacy policy…"):
+                            problem = refresh_legacy_policy(a.service_address)
+                        if problem:
+                            st.error(problem)
+                        else:
+                            record = legacy_record(a.service_address)
+                            for other in current_assets:
+                                if provider_key(other.service_address) == key:
+                                    other.death_policy = apply_legacy_record(other.death_policy, record)
+                            st.rerun()
+            else:
+                st.info("No accounts cataloged yet.")
+
         # --- TAB 6: REMOVED ACCOUNTS ---
         with tab_removed:
             st.markdown("#### 🗑️ Removed Accounts & Restoration")
@@ -1083,13 +1177,7 @@ if st.session_state.active_page == "Catalogue":
 
                     st.divider()
 
-                    st.info(f"**{asset_obj.service} Posthumous Policy:** {death_pol.summary}")
-                    if death_pol.security_warning:
-                        st.warning(f"**Security Alert:** {death_pol.security_warning}")
-
-                    portal = death_pol.official_portal_url or cancel_pol.target_url or asset_obj.service_address
-                    if portal and portal.startswith("http"):
-                        st.markdown(f"🔗 [Direct Support / Deceased Account Portal]({portal})")
+                    render_policy_summary(asset_obj, death_pol, cancel_pol)
 
                     st.write(f"**Action Plan:** {cancel_pol.action_name} (`{cancel_pol.execution_method}`)")
                     if cancel_pol.steps:

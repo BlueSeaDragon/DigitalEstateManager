@@ -36,6 +36,18 @@
     "checked": "2026-09-24"
   },
   {
+    "website": "drive.google.com",
+    "legacy_policy_url": "https://support.google.com/accounts/troubleshooter/6357590?hl=en",
+    "summary": "Google allows immediate family members or representatives to request account closure or content access for a deceased user after a careful review. Inactive Account Manager lets users pre-appoint someone to manage their account if it becomes inactive. Google cannot provide passwords and cannot fulfill later requests if the account has already been closed.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": true,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": null,
+      "proof_required": null
+    },
+    "checked": "2026-09-24"
+  },
+  {
     "website": "dropbox.com",
     "legacy_policy_url": "https://help.dropbox.com/account-settings/access-account-of-someone-who-passed-away",
     "summary": "Dropbox requires proof of death and legal right to access a deceased person's account. Requests must be made via a support ticket with specific documentation, including a court order. Dropbox cannot guarantee access will be granted.",
@@ -43,6 +55,18 @@
       "owner_can_appoint_successor": null,
       "heirs_can_request_access": true,
       "subscription_or_balance_addressed": null,
+      "proof_required": true
+    },
+    "checked": "2026-09-24"
+  },
+  {
+    "website": "github.com",
+    "legacy_policy_url": "https://docs.github.com/en/site-policy/other-site-policies/github-deceased-user-policy",
+    "summary": "GitHub allows authorized individuals to request account actions for a deceased user via the Support portal. Requests require details about the deceased, the requester's relationship, and desired action. GitHub may request proof of death and authorization to verify the request.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": true,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": true,
       "proof_required": true
     },
     "checked": "2026-09-24"
