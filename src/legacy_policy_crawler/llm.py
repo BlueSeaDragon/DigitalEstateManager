@@ -1,7 +1,7 @@
 """Apertus client: plain HTTP calls to an OpenAI-compatible endpoint (Swisscom, Swiss AI Weeks).
 
-The token is the only thing in the git-ignored .env file (APERTUS_API_KEY). URL and model have
-defaults below; environment variables of the same name override them.
+Uses the same Swisscom variables as the subscription finder, set in the git-ignored .env file:
+SWISSCOM_API_KEY (required), SWISSCOM_BASE_URL and SWISSCOM_MODEL (optional; defaults below).
 Check everything with:  python -m legacy_policy_crawler.llm --ping
 """
 
@@ -55,13 +55,13 @@ _last_call = 0.0
 
 
 def _settings() -> tuple[str, str, str]:
-    key = os.getenv("APERTUS_API_KEY", "").strip()
+    key = os.getenv("SWISSCOM_API_KEY", "").strip()
     if not key:
         raise AuthError(
-            "APERTUS_API_KEY is empty. Paste your token into the .env file (see .env.example)."
+            "SWISSCOM_API_KEY is empty. Paste your token into the .env file (see .env.example)."
         )
-    base_url = os.getenv("APERTUS_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
-    return base_url, os.getenv("APERTUS_MODEL", DEFAULT_MODEL), key
+    base_url = (os.getenv("SWISSCOM_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+    return base_url, os.getenv("SWISSCOM_MODEL") or DEFAULT_MODEL, key
 
 
 def _rejected(response: httpx.Response) -> str:
@@ -73,7 +73,7 @@ def _rejected(response: httpx.Response) -> str:
     detail = f": {code}" if code else ""
     return (
         f"Apertus rejected the key (HTTP {response.status_code}{detail}). "
-        "Check APERTUS_API_KEY in .env and that APERTUS_BASE_URL is the product URL the key belongs to."
+        "Check SWISSCOM_API_KEY in .env and that SWISSCOM_BASE_URL is the product URL the key belongs to."
     )
 
 
@@ -144,7 +144,7 @@ def chat(messages: list[dict], max_tokens: int = 300, temperature: float = 0.0) 
                 raise AuthError(_rejected(response))
             if status == 404:
                 raise AuthError(
-                    "Apertus endpoint or model not found (HTTP 404). Check APERTUS_BASE_URL / APERTUS_MODEL."
+                    "Apertus endpoint or model not found (HTTP 404). Check SWISSCOM_BASE_URL / SWISSCOM_MODEL."
                 )
             if status == 429 or status >= 500:
                 problem = f"HTTP {status}"

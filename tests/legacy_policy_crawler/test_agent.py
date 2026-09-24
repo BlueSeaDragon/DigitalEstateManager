@@ -518,7 +518,7 @@ def test_a_search_that_finds_new_pages_does_not_use_up_a_step(world, monkeypatch
 
 
 def test_missing_token_stops_the_run(world):
-    world.nav = [AuthError("APERTUS_API_KEY is empty")]
+    world.nav = [AuthError("SWISSCOM_API_KEY is empty")]
     with pytest.raises(AuthError):
         agent.lookup_legacy_policy("acme.com", path=world.path)
     assert not world.path.exists()

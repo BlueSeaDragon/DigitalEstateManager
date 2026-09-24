@@ -50,9 +50,9 @@ def api(monkeypatch, tmp_path):
     monkeypatch.setattr(
         llm, "USAGE", {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
     )
-    monkeypatch.setenv("APERTUS_API_KEY", "test-key")
-    monkeypatch.delenv("APERTUS_BASE_URL", raising=False)
-    monkeypatch.delenv("APERTUS_MODEL", raising=False)
+    monkeypatch.setenv("SWISSCOM_API_KEY", "test-key")
+    monkeypatch.delenv("SWISSCOM_BASE_URL", raising=False)
+    monkeypatch.delenv("SWISSCOM_MODEL", raising=False)
     return fake
 
 
@@ -110,12 +110,22 @@ def test_chat_sends_token_model_and_counts_usage(api, tmp_path):
 
 
 def test_chat_uses_environment_overrides(api, monkeypatch):
-    monkeypatch.setenv("APERTUS_BASE_URL", "https://other.example/v1/")
-    monkeypatch.setenv("APERTUS_MODEL", "swiss-ai/other")
+    monkeypatch.setenv("SWISSCOM_BASE_URL", "https://other.example/v1/")
+    monkeypatch.setenv("SWISSCOM_MODEL", "swiss-ai/other")
     api.responses = [ok("x")]
     llm.chat(MESSAGES)
     assert str(api.requests[0].url) == "https://other.example/v1/chat/completions"
     assert json.loads(api.requests[0].content)["model"] == "swiss-ai/other"
+
+
+def test_empty_url_and_model_settings_fall_back_to_the_defaults(api, monkeypatch):
+    # .env.example ships them empty, so an empty value must not break the call
+    monkeypatch.setenv("SWISSCOM_BASE_URL", "")
+    monkeypatch.setenv("SWISSCOM_MODEL", "")
+    api.responses = [ok("x")]
+    llm.chat(MESSAGES)
+    assert str(api.requests[0].url).startswith(llm.DEFAULT_BASE_URL)
+    assert json.loads(api.requests[0].content)["model"] == llm.DEFAULT_MODEL
 
 
 def test_chat_retries_rate_limits_and_server_errors_with_backoff(api):
@@ -151,8 +161,8 @@ def test_configuration_problems_raise_auth_error_without_retrying(api, monkeypat
         with pytest.raises(llm.AuthError):
             llm.chat(MESSAGES)
     assert len(api.requests) == 3
-    monkeypatch.setenv("APERTUS_API_KEY", "   ")
-    with pytest.raises(llm.AuthError, match="APERTUS_API_KEY is empty"):
+    monkeypatch.setenv("SWISSCOM_API_KEY", "   ")
+    with pytest.raises(llm.AuthError, match="SWISSCOM_API_KEY is empty"):
         llm.chat(MESSAGES)
     assert len(api.requests) == 3  # no request was sent without a token
 
@@ -164,7 +174,7 @@ def test_rejected_key_reports_the_gateway_error_code_but_never_the_key(api):
     with pytest.raises(llm.AuthError, match="NO_PRODUCT_FOUND_FOR_KEY") as error:
         llm.chat(MESSAGES)
     # the usual cause is the wrong product URL
-    assert "APERTUS_BASE_URL" in str(error.value)
+    assert "SWISSCOM_BASE_URL" in str(error.value)
     assert "test-key" not in str(error.value)
     api.responses = [httpx.Response(403, text="<html>")]  # no JSON body: still clear
     with pytest.raises(llm.AuthError, match="HTTP 403"):
@@ -207,7 +217,7 @@ def test_ping(api, capsys, monkeypatch):
     api.responses = [ok("pong")]
     assert llm.main(["--ping"]) == 0
     assert "pong" in capsys.readouterr().out
-    monkeypatch.setenv("APERTUS_API_KEY", "")
+    monkeypatch.setenv("SWISSCOM_API_KEY", "")
     assert llm.main(["--ping"]) == 1
-    assert "APERTUS_API_KEY is empty" in capsys.readouterr().err
+    assert "SWISSCOM_API_KEY is empty" in capsys.readouterr().err
     assert llm.main([]) == 2

@@ -168,9 +168,9 @@ def test_refresh_reports_success_or_a_friendly_problem(policy_file, monkeypatch)
     assert "could not be reached" in legacy.refresh_legacy_policy("https://newsite.com")
 
     def no_token(*args, **kwargs):
-        raise AuthError("APERTUS_API_KEY is empty")
+        raise AuthError("SWISSCOM_API_KEY is empty")
 
     monkeypatch.setattr(legacy_policy_crawler, "lookup_legacy_policy", no_token)
-    assert "APERTUS_API_KEY is empty" in legacy.refresh_legacy_policy(
+    assert "SWISSCOM_API_KEY is empty" in legacy.refresh_legacy_policy(
         "https://coinbase.com"
     )

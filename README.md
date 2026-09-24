@@ -87,9 +87,9 @@ DigitalEstateManager/
 
 For a company website it finds the page that states what happens to an account or subscription after the holder's death, and saves the link, a short summary and a few tick boxes in `data/legacy_policies.json`. It only reads public web pages: it never logs in to accounts and does not cancel anything (that is a separate crawler). The agent runs on Apertus 1.5 70B (Swisscom AI Platform).
 
-**Setup** (after pulling, run `pip install -e .` again: new dependencies `httpx`, `beautifulsoup4`, `python-dotenv`, `ddgs`)
+**Setup** (after pulling, run `pip install -e .` again: new dependencies `httpx`, `beautifulsoup4`, `ddgs`)
 
-1. Copy `.env.example` to `.env` (git-ignored) and paste your Swisscom token: `APERTUS_API_KEY=<token>`. Never commit or share it. The default endpoint is the Swiss AI Weeks one (`.../products/swiss-ai-weeks/apertus-1.5-70b/v1`); a key only works on the product URL it belongs to, so set `APERTUS_BASE_URL` in `.env` if yours differs.
+1. Copy `.env.example` to `.env` (git-ignored) and paste your Swisscom token: `SWISSCOM_API_KEY=<token>`. Never commit or share it. The variables are shared with the subscription finder, so both use one Apertus service and one 5 requests/s quota. `SWISSCOM_BASE_URL` may stay empty: the crawler then uses the Swiss AI Weeks endpoint (`.../products/swiss-ai-weeks/apertus-1.5-70b/v1`). A key only works on the product URL it belongs to, so set it if yours differs. `SWISSCOM_MODEL` is optional.
 2. Check token, URL and model: `python -m legacy_policy_crawler.llm --ping`
 
 > Windows on ARM: the x64 Miniconda runs fine under emulation. To avoid Anaconda's channel licence prompt, create the environment with `conda create -n DEM -c conda-forge --override-channels python=3.12 pip`.
