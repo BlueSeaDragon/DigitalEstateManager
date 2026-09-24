@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Subscription finder: private data, secrets, outputs
+data/
+credentials.json
+token.json
+output/
+.cache/

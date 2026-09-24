@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subscription-finder"
+version = "0.1.0"
+description = "Find paid recurring subscriptions in one person's email and transaction history"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.30",
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.2",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+subscription-finder = "subscription_finder.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: calls the real Swisscom Apertus API (run with -m live)"]
+addopts = "-m 'not live'"
