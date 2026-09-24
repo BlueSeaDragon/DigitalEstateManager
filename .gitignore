@@ -223,3 +223,9 @@ credentials.json
 token.json
 output/
 .cache/
+
+# Google OAuth client secrets and tokens (CLI desktop client and webapp web client)
+config/*.json
+credentials*.json
+client_secret*.json
+token*.json

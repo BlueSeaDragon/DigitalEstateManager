@@ -2,7 +2,14 @@ from typing import List, Optional
 import pandas as pd
 import streamlit as st
 
-from digital_estate_manager.discovery import connect_email_provider, parse_and_extract
+from digital_estate_manager.discovery import (
+    DiscoveryInputError,
+    EmailConnectionError,
+    MalformedFinderResult,
+    complete_email_connection,
+    connect_email_provider,
+    parse_and_extract,
+)
 from digital_estate_manager.models import (
     Asset,
     CancelPolicy,
@@ -16,6 +23,15 @@ from digital_estate_manager.models import (
 from digital_estate_manager.policies import generate_action_email
 from digital_estate_manager.policies.rules import get_policies_for_service
 from digital_estate_manager.vault import calculate_metrics, get_default_assets
+
+try:
+    from subscription_finder import LLMConfigError, ReconnectRequired
+except ImportError:  # finder not installed: parse_and_extract() reports that itself
+    class LLMConfigError(Exception):
+        pass
+
+    class ReconnectRequired(Exception):
+        pass
 
 st.set_page_config(
     page_title="Digital Legacy Vault",
@@ -110,6 +126,29 @@ elif len(st.session_state.assets) > 0 and isinstance(st.session_state.assets[0],
 if "active_page" not in st.session_state:
     st.session_state.active_page = "Catalogue"
 
+
+def handle_oauth_redirect() -> None:
+    """Completes the Gmail OAuth flow when Google redirects back with ?code=...&state=..."""
+    params = st.query_params
+    if "code" not in params and "error" not in params:
+        return
+    code, state, error = params.get("code"), params.get("state"), params.get("error")
+    st.query_params.clear()
+    st.session_state.active_page = "Find Assets"
+
+    if error:
+        st.session_state.oauth_message = ("error", f"Google sign-in was not completed ({error}).")
+        return
+    try:
+        # Checks that the state was issued by this server (and only once) before exchanging the code.
+        st.session_state.gmail_credentials = complete_email_connection(code, state)
+        st.session_state.oauth_message = ("success", "Gmail connected for this session.")
+    except EmailConnectionError as exc:
+        st.session_state.oauth_message = ("error", str(exc))
+
+
+handle_oauth_redirect()
+
 current_assets: List[Asset] = st.session_state.assets
 metrics = calculate_metrics(current_assets)
 
@@ -172,13 +211,18 @@ def email_connection_dialog():
         help="Only Gmail is currently supported in this prototype.",
     )
 
+    if st.session_state.get("gmail_credentials"):
+        st.success("✅ A Gmail account is already connected for this session.")
+
     target_email = st.text_input(
-        "Enter Gmail Address",
+        "Enter Gmail Address (optional)",
         placeholder="e.g. john.doe@gmail.com",
     )
 
     st.info(
-        "🔒 **Privacy & Read-Only Access**: DEM requests read-only metadata access to scan for subscription receipts and service confirmations. We never store email contents."
+        "🔒 **Privacy & Read-Only Access**: DEM requests read-only Gmail access to scan billing emails for subscriptions. "
+        "Emails are processed in memory and only short excerpts are sent to the Swiss-hosted AI model; email contents are "
+        "not stored, and the connection ends with this browser session."
     )
 
     st.divider()
@@ -188,14 +232,22 @@ def email_connection_dialog():
             st.rerun()
 
     with c_auth:
-        if st.button("🔗 Authorize & Connect Gmail", type="primary", use_container_width=True, key="email_auth_btn"):
-            if not target_email or "@" not in target_email:
-                st.error("Please provide a valid Gmail address.")
-            else:
-                resp = connect_email_provider(provider="gmail", email_address=target_email)
-                st.success(resp["message"])
-                st.caption(f"Status: `{resp['status']}` | Provider: `{resp['provider']}`")
-                st.info("OAuth2 connection interface initialized (Ready for teammate backend implementation).")
+        auth_clicked = st.button("🔗 Authorize & Connect Gmail", type="primary", use_container_width=True, key="email_auth_btn")
+
+    if auth_clicked:
+        if target_email and "@" not in target_email:
+            st.error("Please provide a valid Gmail address.")
+            return
+        resp = connect_email_provider(provider="gmail", email_address=target_email or None)
+        if not resp["success"]:
+            st.error(resp["message"])
+            return
+        st.session_state.oauth_state = resp["state"]
+        st.link_button("Continue to Google →", resp["auth_url"], type="primary", use_container_width=True)
+        st.caption(
+            "Google opens in a new tab. After you grant access you are sent back to this app, "
+            "already connected; continue in that tab."
+        )
 
 
 
@@ -435,19 +487,35 @@ if st.session_state.active_page == "Catalogue":
                     modal_add_asset_dialog(default_category="Subscription")
 
             if subs_list:
-                sub_rows = [a.to_type_specific_dict() for a in subs_list]
+                sub_rows = [
+                    {**a.to_type_specific_dict(), "Checked": "✅" if a.user_verified else "🔍 Not yet"}
+                    for a in subs_list
+                ]
                 st.dataframe(pd.DataFrame(sub_rows), use_container_width=True)
 
                 st.markdown("##### ⚙️ Subscription Actions & Cancellation Center")
                 for sub in subs_list:
-                    status_badge = "🔴 Cancelled" if sub.status == "Cancelled" else "🟢 Active"
-                    card_title = f"{sub.service} — {sub.username} [{status_badge} | {sub.cost_display}]"
+                    status_badge = {"Cancelled": "🔴 Cancelled", "Pending Review": "🟡 Pending Review"}.get(
+                        sub.status, "🟢 Active"
+                    )
+                    check_marker = "" if sub.user_verified else "🔍 "
+                    card_title = f"{check_marker}{sub.service} — {sub.username} [{status_badge} | {sub.cost_display}]"
 
                     with st.expander(card_title, expanded=(sub.status != "Cancelled")):
                         c1, c2, c3 = st.columns([2, 1, 1])
                         c1.write(f"**Plan Tier:** {getattr(sub.asset_info, 'plan_tier', 'Standard')} | **Billing:** {getattr(sub.asset_info, 'billing_cycle', 'monthly').capitalize()}")
                         c1.write(f"**Next Renewal Date:** {getattr(sub.asset_info, 'renewal_date', 'N/A')}")
                         c1.write(f"**Assigned Heir:** {sub.heir}")
+                        verified = c1.checkbox(
+                            "I checked this subscription myself",
+                            value=sub.user_verified,
+                            key=f"cat_verified_{sub.id}",
+                        )
+                        if verified != sub.user_verified:
+                            sub.user_verified = verified
+                            st.rerun()
+                        if sub.notes:
+                            c1.caption(sub.notes.replace("\n", "  \n"))
 
                         with c2:
                             portal = sub.cancel_policy.target_url or sub.service_address
@@ -777,39 +845,96 @@ else:
 
     with col_email_info:
         st.caption("Supported providers: **Gmail** (Google Workspace and Personal). More providers coming soon.")
+        if st.session_state.get("gmail_credentials"):
+            st.caption("✅ Gmail connected for this session — it is scanned when you run discovery.")
+            if st.button("Disconnect Gmail", key="gmail_disconnect_btn"):
+                st.session_state.pop("gmail_credentials", None)
+                st.rerun()
+
+    oauth_message = st.session_state.pop("oauth_message", None)
+    if oauth_message:
+        kind, text = oauth_message
+        (st.success if kind == "success" else st.error)(text)
 
     st.divider()
 
     # Section B: File Statement Ingestion
     st.markdown("#### 📄 Upload Statements or Invoice Exports")
-    st.write("Upload PDF bank statements, utility invoices, or CSV transaction exports for AI parsing.")
+    st.write("Upload a transaction export for AI parsing. Gmail (if connected) and the file are scanned together.")
+    st.caption("Currently supported: transactions as **JSONL** or **JSON**. PDF, CSV and TXT statements are not supported yet.")
 
     uploaded_disc_file = st.file_uploader(
         "Upload Bank Statement, Invoices, or Mail Export",
-        type=["pdf", "json", "csv", "txt"],
+        type=["jsonl", "json", "pdf", "csv", "txt"],
         key="disc_page_file_uploader",
     )
 
+    def run_discovery(use_llm: bool) -> None:
+        """Runs the subscription finder and adds new subscriptions to the vault."""
+        bar = st.progress(0.0, text="Starting discovery...")
+        try:
+            result = parse_and_extract(
+                uploaded_disc_file,
+                gmail_credentials=st.session_state.get("gmail_credentials"),
+                use_llm=use_llm,
+                progress=lambda message, fraction: bar.progress(min(max(fraction, 0.0), 1.0), text=message),
+            )
+        except DiscoveryInputError as exc:
+            bar.empty()
+            st.error(str(exc))
+            return
+        except LLMConfigError as exc:
+            bar.empty()
+            st.session_state.discovery_llm_error = str(exc)
+            return
+        except ReconnectRequired:
+            bar.empty()
+            st.session_state.pop("gmail_credentials", None)
+            st.warning("Gmail access has expired or was revoked. Please connect your Gmail account again.")
+            return
+        except MalformedFinderResult:
+            bar.empty()
+            st.error("The subscription finder returned an unexpected result. Nothing was added to the vault.")
+            return
+        except Exception as exc:
+            bar.empty()
+            st.error(f"Discovery failed ({type(exc).__name__}): {exc}")
+            return
+
+        st.session_state.pop("discovery_llm_error", None)
+        existing_keys = {a.unique_key for a in st.session_state.assets}
+        added_count = 0
+        for asset in result.extracted_assets:
+            if asset.unique_key not in existing_keys:
+                st.session_state.assets.append(asset)
+                existing_keys.add(asset.unique_key)
+                added_count += 1
+
+        st.session_state.discovery_message = (
+            f"Discovery complete! Extracted {len(result.extracted_assets)} items "
+            f"({added_count} new cataloged). Detected potential recurring drain: "
+            f"{result.detected_recurring_monthly_drain:.2f}/mo. Detected subscriptions are marked 🔍 until you check them. "
+            f"{result.notes or ''}"
+        )
+        st.rerun()
+
     col_run_disc, _ = st.columns([1, 3])
     with col_run_disc:
-        if st.button("Run AI Discovery", use_container_width=True):
-            with st.spinner("Analyzing statements for recurring charges & digital accounts..."):
-                result = parse_and_extract(uploaded_disc_file)
-                existing_keys = {a.unique_key for a in st.session_state.assets}
-                added_count = 0
+        run_clicked = st.button("Run AI Discovery", use_container_width=True)
+    if run_clicked:
+        run_discovery(use_llm=True)
 
-                for asset in result.extracted_assets:
-                    if asset.unique_key not in existing_keys:
-                        st.session_state.assets.append(asset)
-                        existing_keys.add(asset.unique_key)
-                        added_count += 1
+    if st.session_state.get("discovery_llm_error"):
+        st.warning(
+            f"The AI model is not configured: {st.session_state.discovery_llm_error} "
+            "You can run discovery with rules only (less precise names and confidence)."
+        )
+        if st.button("Run discovery without AI (rules only)", key="disc_rules_only_btn"):
+            run_discovery(use_llm=False)
 
-                st.success(
-                    f"Discovery complete! Extracted {len(result.extracted_assets)} items "
-                    f"({added_count} new cataloged). Detected potential recurring drain: "
-                    f"${result.detected_recurring_monthly_drain:.2f}."
-                )
-                st.rerun()
+    discovery_message = st.session_state.pop("discovery_message", None)
+    if discovery_message:
+        st.success(discovery_message)
 
     st.divider()
 

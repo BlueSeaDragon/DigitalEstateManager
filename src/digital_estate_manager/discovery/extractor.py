@@ -1,106 +1,92 @@
 """AI Asset Discovery & Extraction Module.
 
-Main hook for Teammate 2:
-Implement bank statement, invoice, and email archive parsers here.
+Runs the subscription finder on a connected Gmail account and/or an uploaded
+transaction file and converts its findings into webapp `Asset` models.
 """
 
-from typing import Any, List, Optional
-from digital_estate_manager.models.schemas import (
-    Asset,
-    CloudStorageAssetInfo,
-    DiscoveryResult,
-    SubscriptionAssetInfo,
-)
-from digital_estate_manager.policies.rules import get_policies_for_service
+import io
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional
+
+from digital_estate_manager.discovery.subscription_adapter import to_discovery_result
+from digital_estate_manager.models.schemas import DiscoveryResult
+
+# Transaction formats the subscription finder reads (JSON Lines, or a JSON array of rows).
+SUPPORTED_TRANSACTION_EXTENSIONS = (".jsonl", ".json")
+
+
+class DiscoveryInputError(ValueError):
+    """Discovery cannot run with the given inputs; the message is safe to show to the user."""
+
+
+class UnsupportedFileFormat(DiscoveryInputError):
+    """The uploaded file is not a transaction format the subscription finder supports."""
 
 
 def parse_and_extract(
-    uploaded_file: Any,
+    uploaded_file: Any = None,
     filename: Optional[str] = None,
+    *,
+    gmail_credentials: Optional[Dict[str, Any]] = None,
+    use_llm: bool = True,
+    progress: Optional[Callable[[str, float], None]] = None,
 ) -> DiscoveryResult:
-    """Parses an uploaded bank statement or email export and extracts recurring subscriptions
-
-    and digital accounts.
+    """Finds paid recurring subscriptions and returns them as a DiscoveryResult.
 
     Args:
-        uploaded_file: A file-like object (such as Streamlit's UploadedFile) or raw bytes.
-        filename: Optional name of the uploaded file.
+        uploaded_file: Optional file-like object (such as Streamlit's UploadedFile) or raw
+            bytes with one person's transactions as JSONL / JSON.
+        filename: Optional name of the uploaded file (defaults to `uploaded_file.name`).
+        gmail_credentials: Optional credentials dict from `complete_email_connection()`.
+        use_llm: Whether the finder may use the LLM (needs SWISSCOM_API_KEY / SWISSCOM_BASE_URL).
+        progress: Optional callback `(message, fraction)`.
 
     Returns:
         DiscoveryResult containing the list of newly identified Asset models.
+
+    Raises:
+        DiscoveryInputError / UnsupportedFileFormat: nothing to scan, or an unsupported file.
+        subscription_finder.LLMConfigError: `use_llm` is set but the LLM is not configured.
+        subscription_finder.ReconnectRequired: the Gmail credentials expired or were revoked.
+        MalformedFinderResult: the finder returned an unexpected result.
     """
-    fname = filename or getattr(uploaded_file, "name", "uploaded_statement")
+    fname = filename or getattr(uploaded_file, "name", None) or ("uploaded_statement" if uploaded_file else None)
 
-    # =========================================================================
-    # TEAMMATE 2 HOOK:
-    # Replace this placeholder logic with your document parser / OCR / LLM call.
-    # (e.g. PyPDF / pdfplumber + OpenAI / Anthropic / Gemini function calling)
-    # =========================================================================
+    if uploaded_file is not None and Path(fname).suffix.lower() not in SUPPORTED_TRANSACTION_EXTENSIONS:
+        raise UnsupportedFileFormat(
+            "This file format is not supported for subscription discovery yet. "
+            "Upload transactions as JSONL or JSON."
+        )
+    if uploaded_file is None and not gmail_credentials:
+        raise DiscoveryInputError("Connect a Gmail account or upload a JSONL transaction file first.")
 
-    netflix_death, netflix_cancel = get_policies_for_service("Netflix", "https://netflix.com")
-    gh_death, gh_cancel = get_policies_for_service("GitHub", "https://github.com")
-    gh_cancel.action_name = "Transfer & Archive"
-    gh_cancel.action_type = "transfer_and_archive"
-    aws_death, aws_cancel = get_policies_for_service("AWS", "https://aws.amazon.com")
-    aws_cancel.action_name = "Transfer & Archive"
-    aws_cancel.action_type = "transfer_and_archive"
+    try:
+        from subscription_finder import GmailSource, detect_subscriptions
+        from subscription_finder.auth import credentials_from_dict
+    except ImportError as exc:
+        raise DiscoveryInputError(
+            "The subscription finder is not installed. Run: pip install -e ./subscription_finder"
+        ) from exc
 
-    # Default prototype discovery items
-    discovered = [
-        Asset(
-            service="Netflix",
-            service_address="https://netflix.com",
-            username="user.streaming@gmail.com",
-            death_policy=netflix_death,
-            cancel_policy=netflix_cancel,
-            asset_info=SubscriptionAssetInfo(
-                cost_monthly=15.49,
-                plan_tier="Standard with Ads",
-                billing_cycle="monthly",
-            ),
-            heir="Unassigned",
-            status="Pending Review",
-            notes=f"Auto-detected from {fname}",
-        ),
-        Asset(
-            service="GitHub Pro",
-            service_address="https://github.com",
-            username="octocat_dev",
-            death_policy=gh_death,
-            cancel_policy=gh_cancel,
-            asset_info=SubscriptionAssetInfo(
-                cost_monthly=4.00,
-                plan_tier="Developer Pro",
-                billing_cycle="monthly",
-            ),
-            heir="Unassigned",
-            status="Pending Review",
-            notes=f"Recurring developer charge found in {fname}",
-        ),
-        Asset(
-            service="AWS Cloud Services",
-            service_address="https://aws.amazon.com",
-            username="cloud-admin@domain.com",
-            death_policy=aws_death,
-            cancel_policy=aws_cancel,
-            asset_info=CloudStorageAssetInfo(
-                storage_capacity_gb=500.0,
-                used_storage_gb=180.5,
-                contains_sensitive_data=True,
-                data_types=["S3 Buckets", "Database Backups"],
-            ),
-            heir="Unassigned",
-            status="Pending Review",
-            notes=f"Infrastructure bill found in {fname}",
-        ),
-    ]
+    transactions = uploaded_file
+    if isinstance(transactions, (bytes, bytearray)):
+        transactions = io.BytesIO(transactions)
+        transactions.name = fname
+    elif transactions is not None and hasattr(transactions, "seek"):
+        transactions.seek(0)  # Streamlit reuses the same buffer across reruns
 
-    total_drain = sum(a.cost_monthly for a in discovered if a.cost_monthly)
+    email_sources = []
+    if gmail_credentials:
+        # Raises ReconnectRequired if the token cannot be refreshed.
+        email_sources.append(GmailSource(credentials_from_dict(gmail_credentials)))
 
-    return DiscoveryResult(
-        source_name=fname,
-        extracted_assets=discovered,
-        confidence_score=0.92,
-        detected_recurring_monthly_drain=total_drain,
-        notes=f"Successfully extracted {len(discovered)} potential digital assets from {fname}.",
+    result = detect_subscriptions(
+        email_sources=email_sources,
+        transactions=transactions,
+        use_llm=use_llm,
+        progress=progress,
     )
+
+    sources = (["Gmail"] if email_sources else []) + ([fname] if uploaded_file is not None else [])
+    source_name = " + ".join(sources)
+    return to_discovery_result(result, source_name=source_name)

@@ -12,7 +12,10 @@ requires-python = ">=3.10"
 dependencies = [
     "streamlit>=1.35.0",
     "pandas>=2.1.0",
-    "pydantic>=2.0.0"
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0",
+    # Also required, installed from the local folder (not from PyPI):
+    #   pip install -e ./subscription_finder
 ]
 
 [project.optional-dependencies]

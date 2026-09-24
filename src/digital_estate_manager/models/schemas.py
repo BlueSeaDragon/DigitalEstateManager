@@ -385,6 +385,10 @@ class Asset(BaseModel):
     heir: str = Field(default="Unassigned", description="Designated heir or executor responsible")
     status: AssetStatus = Field(default="Active", description="Execution status")
     notes: Optional[str] = Field(default=None, description="Additional context or account notes")
+    user_verified: bool = Field(
+        default=True,
+        description="Whether the owner has checked this asset themselves (False for automatically discovered assets)",
+    )
 
     # --- Backward-compatibility and convenience aliases ---
     @property
