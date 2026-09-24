@@ -1,0 +1,110 @@
+from digital_estate_manager.models import (
+    Asset,
+    AssetInfo,
+    SubscriptionAssetInfo,
+    FinancialAssetInfo,
+    CloudStorageAssetInfo,
+    SocialMediaAssetInfo,
+    GenericAssetInfo,
+    DeathPolicy,
+    CancelPolicy,
+)
+from digital_estate_manager.vault import get_default_assets, calculate_metrics
+from digital_estate_manager.policies import generate_action_email, get_policies_for_service
+
+
+def test_asset_info_polymorphism():
+    sub = SubscriptionAssetInfo(cost_monthly=12.99, plan_tier="Gold", billing_cycle="monthly")
+    assert sub.get_monthly_cost() == 12.99
+    assert sub.get_cost_display() == "$12.99/mo"
+    assert sub.display_details()["Plan Tier"] == "Gold"
+
+    fin = FinancialAssetInfo(approximate_balance=50000.0, institution_type="crypto_exchange")
+    assert fin.get_cost_display() == "$50,000.00"
+    assert fin.display_details()["Institution"] == "Crypto Exchange"
+
+    cloud = CloudStorageAssetInfo(storage_capacity_gb=200.0, used_storage_gb=85.0)
+    assert cloud.display_details()["Storage Capacity"] == "200 GB"
+
+    social = SocialMediaAssetInfo(platform_handle="@alex_legacy", memorialization_supported=True)
+    assert social.display_details()["Memorialization"] == "Supported"
+
+    gen = GenericAssetInfo(category_name="Domain Name", custom_properties={"Registrar": "Namecheap"})
+    assert gen.display_details()["Registrar"] == "Namecheap"
+
+
+def test_cancel_policy_execution():
+    p_email = CancelPolicy(
+        action_name="Cancel Subscription",
+        execution_method="email_notice",
+        support_email="support@spotify.com",
+    )
+    res_email = p_email.execute_action("Spotify", "https://spotify.com", "alex@gmail.com")
+    assert res_email["method"] == "email_notice"
+    assert "alex@gmail.com" in res_email["email_body"]
+
+    p_portal = CancelPolicy(
+        action_name="Data Transfer",
+        execution_method="web_portal",
+        target_url="https://google.com/portal",
+    )
+    res_portal = p_portal.execute_action("Google", "https://google.com", "alex@gmail.com")
+    assert res_portal["method"] == "web_portal"
+    assert res_portal["portal_url"] == "https://google.com/portal"
+
+    p_probate = CancelPolicy(
+        action_name="Probate Asset Recovery",
+        execution_method="probate_filing",
+    )
+    res_probate = p_probate.execute_action("Coinbase", "https://coinbase.com", "alex@crypto.com")
+    assert res_probate["method"] == "probate_filing"
+    assert len(res_probate["steps"]) >= 3
+
+
+def test_asset_creation_and_table_serialization():
+    death_pol, cancel_pol = get_policies_for_service("Spotify", "https://spotify.com")
+    asset = Asset(
+        service="Spotify",
+        service_address="https://spotify.com",
+        username="alex.music@gmail.com",
+        death_policy=death_pol,
+        cancel_policy=cancel_pol,
+        asset_info=SubscriptionAssetInfo(cost_monthly=10.99, plan_tier="Individual"),
+        heir="Jordan",
+        status="Active",
+    )
+
+    assert asset.service == "Spotify"
+    assert asset.service_address == "https://spotify.com"
+    assert asset.username == "alex.music@gmail.com"
+    assert asset.category == "Subscription"
+    assert asset.cost_monthly == 10.99
+
+    # Table row roundtrip
+    row = asset.to_table_row()
+    assert row["Username"] == "alex.music@gmail.com"
+    assert row["Service Address"] == "https://spotify.com"
+    assert row["Type"] == "Subscription"
+
+    rebuilt = Asset.from_table_row(row)
+    assert rebuilt.service == "Spotify"
+    assert rebuilt.username == "alex.music@gmail.com"
+    assert rebuilt.service_address == "https://spotify.com"
+
+
+def test_default_assets_and_metrics():
+    assets = get_default_assets()
+    assert len(assets) == 4
+    metrics = calculate_metrics(assets)
+    assert metrics["total_services"] == 4
+    assert metrics["unique_providers"] == 3
+    assert float(metrics["monthly_drain_prevented"].replace("$", "")) > 0
+
+
+if __name__ == "__main__":
+    test_asset_info_polymorphism()
+    test_cancel_policy_execution()
+    test_asset_creation_and_table_serialization()
+    test_default_assets_and_metrics()
+    print("ALL TESTS PASSED SUCCESSFULLY!")
+

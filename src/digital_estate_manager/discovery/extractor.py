@@ -5,7 +5,13 @@ Implement bank statement, invoice, and email archive parsers here.
 """
 
 from typing import Any, List, Optional
-from digital_estate_manager.models.schemas import Asset, DiscoveryResult
+from digital_estate_manager.models.schemas import (
+    Asset,
+    CloudStorageAssetInfo,
+    DiscoveryResult,
+    SubscriptionAssetInfo,
+)
+from digital_estate_manager.policies.rules import get_policies_for_service
 
 
 def parse_and_extract(
@@ -31,41 +37,59 @@ def parse_and_extract(
     # (e.g. PyPDF / pdfplumber + OpenAI / Anthropic / Gemini function calling)
     # =========================================================================
 
+    netflix_death, netflix_cancel = get_policies_for_service("Netflix", "https://netflix.com")
+    gh_death, gh_cancel = get_policies_for_service("GitHub", "https://github.com")
+    gh_cancel.action_name = "Transfer & Archive"
+    gh_cancel.action_type = "transfer_and_archive"
+    aws_death, aws_cancel = get_policies_for_service("AWS", "https://aws.amazon.com")
+    aws_cancel.action_name = "Transfer & Archive"
+    aws_cancel.action_type = "transfer_and_archive"
+
     # Default prototype discovery items
     discovered = [
         Asset(
             service="Netflix",
             service_address="https://netflix.com",
-            address="user.streaming@gmail.com",
-            category="Subscription",
-            cost_monthly=15.49,
-            cost_display="$15.49/mo",
+            username="user.streaming@gmail.com",
+            death_policy=netflix_death,
+            cancel_policy=netflix_cancel,
+            asset_info=SubscriptionAssetInfo(
+                cost_monthly=15.49,
+                plan_tier="Standard with Ads",
+                billing_cycle="monthly",
+            ),
             heir="Unassigned",
-            action="Cancel",
             status="Pending Review",
             notes=f"Auto-detected from {fname}",
         ),
         Asset(
             service="GitHub Pro",
             service_address="https://github.com",
-            address="octocat_dev",
-            category="Subscription",
-            cost_monthly=4.00,
-            cost_display="$4.00/mo",
+            username="octocat_dev",
+            death_policy=gh_death,
+            cancel_policy=gh_cancel,
+            asset_info=SubscriptionAssetInfo(
+                cost_monthly=4.00,
+                plan_tier="Developer Pro",
+                billing_cycle="monthly",
+            ),
             heir="Unassigned",
-            action="Transfer & Archive",
             status="Pending Review",
             notes=f"Recurring developer charge found in {fname}",
         ),
         Asset(
             service="AWS Cloud Services",
             service_address="https://aws.amazon.com",
-            address="cloud-admin@domain.com",
-            category="Cloud Storage",
-            cost_monthly=28.50,
-            cost_display="$28.50/mo",
+            username="cloud-admin@domain.com",
+            death_policy=aws_death,
+            cancel_policy=aws_cancel,
+            asset_info=CloudStorageAssetInfo(
+                storage_capacity_gb=500.0,
+                used_storage_gb=180.5,
+                contains_sensitive_data=True,
+                data_types=["S3 Buckets", "Database Backups"],
+            ),
             heir="Unassigned",
-            action="Transfer & Archive",
             status="Pending Review",
             notes=f"Infrastructure bill found in {fname}",
         ),

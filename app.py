@@ -3,7 +3,7 @@ import streamlit as st
 
 from digital_estate_manager.discovery import parse_and_extract
 from digital_estate_manager.models import Asset
-from digital_estate_manager.policies import generate_action_email, lookup_policy
+from digital_estate_manager.policies import generate_action_email
 from digital_estate_manager.vault import calculate_metrics, get_default_assets
 
 st.set_page_config(
@@ -44,7 +44,7 @@ if mode == "Account Owner":
             # Teammate 2 hook: src/digital_estate_manager/discovery/extractor.py
             result = parse_and_extract(uploaded_file)
 
-            # Avoid duplicates based on unique composite key (Service + Service Address + Account Address)
+            # Avoid duplicates based on composite unique_key (Service + Service Address + Username)
             existing_keys = {Asset.from_table_row(a).unique_key for a in st.session_state.assets}
             added_count = 0
 
@@ -66,7 +66,7 @@ if mode == "Account Owner":
     # Catalog Management
     st.subheader("2. Your Cataloged Assets")
     st.caption(
-        "Manage services, provider addresses (websites), and account addresses (e.g. emails/handles)."
+        "Manage services, provider addresses (websites), and account usernames (emails/handles)."
     )
     df = pd.DataFrame(st.session_state.assets)
     edited_df = st.data_editor(
@@ -78,9 +78,9 @@ if mode == "Account Owner":
                 "Service Address",
                 help="Website of provider (e.g. https://spotify.com) to distinguish same-name services",
             ),
-            "Address": st.column_config.TextColumn(
-                "Address",
-                help="Account email, username, or identifier to separate multiple accounts under one service",
+            "Username": st.column_config.TextColumn(
+                "Username",
+                help="Account username, email address, or handle to separate multiple accounts under one provider",
             ),
             "Cost": st.column_config.TextColumn("Monthly / Value"),
             "Action": st.column_config.SelectboxColumn(
@@ -119,52 +119,59 @@ else:
 
     for idx, asset_data in enumerate(st.session_state.assets):
         asset_obj = Asset.from_table_row(asset_data)
-        # Teammate 3 hook: lookup by service name and service website to prevent ambiguous matches
-        policy = lookup_policy(
-            service_name=asset_obj.service,
-            service_address=asset_obj.service_address,
-        )
+        death_pol = asset_obj.death_policy
+        cancel_pol = asset_obj.cancel_policy
 
         status_emoji = "✅" if asset_obj.status == "Completed" else "⚙️"
-        acc_label = f" [{asset_obj.address}]" if asset_obj.address else ""
+        user_label = f" [{asset_obj.username}]" if asset_obj.username else ""
         expander_title = (
-            f"{status_emoji} {asset_obj.service}{acc_label} ({asset_obj.category}) — "
+            f"{status_emoji} {asset_obj.service}{user_label} ({asset_obj.category}) — "
             f"Assigned to: {asset_obj.heir} [{asset_obj.status}]"
         )
 
         with st.expander(expander_title):
-            # Header info showing distinct addresses
-            cols = st.columns([1, 1, 1])
-            cols[0].write(f"**Provider Website:** {asset_obj.service_address or 'N/A'}")
-            cols[1].write(f"**Account Address:** {asset_obj.address or 'N/A'}")
-            cols[2].write(f"**Recommended Action:** {asset_obj.action}")
+            # Display polymorphic asset details
+            details = asset_obj.asset_info.display_details()
+            detail_cols = st.columns(len(details) + 2)
+            detail_cols[0].write(f"**Provider URL:** {asset_obj.service_address or 'N/A'}")
+            detail_cols[1].write(f"**Username:** {asset_obj.username or 'N/A'}")
+            for col, (k, v) in zip(detail_cols[2:], details.items()):
+                col.write(f"**{k}:** {v}")
 
-            # Platform policy guidance
-            if policy:
-                st.info(f"**{policy.service} Policy:** {policy.company_policy}")
+            st.divider()
 
-                if policy.security_warning:
-                    st.warning(f"**Security Notice:** {policy.security_warning}")
+            # Platform Death Policy & Posthumous Rules
+            st.info(f"**{asset_obj.service} Death Policy:** {death_pol.summary}")
 
-                if policy.required_documents:
-                    st.write("**Required Documentation:**")
-                    for doc in policy.required_documents:
-                        st.markdown(f"- {doc}")
+            if death_pol.security_warning:
+                st.warning(f"**Security Notice:** {death_pol.security_warning}")
 
-                portal = policy.portal_url or asset_obj.service_address
-                if portal and portal.startswith("http"):
-                    st.markdown(f"🔗 [Direct Support / Deceased Account Portal]({portal})")
+            portal = death_pol.official_portal_url or cancel_pol.target_url or asset_obj.service_address
+            if portal and portal.startswith("http"):
+                st.markdown(f"🔗 [Direct Support / Deceased Account Portal]({portal})")
 
-            # Generated legal notice/email draft with exact account & provider addresses
-            email_draft = generate_action_email(
+            # Execution Plan & Checklist from Cancel Policy
+            st.write(f"**Configured Action:** {cancel_pol.action_name} (`{cancel_pol.execution_method}`)")
+            if cancel_pol.steps:
+                st.write("**Execution Steps:**")
+                for s_idx, step in enumerate(cancel_pol.steps):
+                    st.markdown(f"{s_idx + 1}. {step}")
+
+            if cancel_pol.required_documents:
+                st.write("**Required Documentation:**")
+                for doc in cancel_pol.required_documents:
+                    st.markdown(f"- {doc}")
+
+            # Generated legal action notice / email via cancel policy
+            action_text = generate_action_email(
                 asset=asset_obj,
                 executor_name=asset_obj.heir if asset_obj.heir != "Unassigned" else "Authorized Heir",
                 deceased_name="John Doe",
-                account_email=asset_obj.address or None,
+                account_email=asset_obj.username or None,
             )
             st.text_area(
-                "Generated Legal Request / Notice",
-                email_draft,
+                "Execution Dispatcher / Action Notice",
+                action_text,
                 height=150,
                 key=f"email_{idx}",
             )
