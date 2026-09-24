@@ -29,25 +29,28 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
 
     context_str = "\n\n".join(search_results)
     
-    system_prompt = "You determine cancellation channels under Swiss law and return JSON."
+    system_prompt = "You determine cancellation channels under Swiss law and return valid JSON."
     user_prompt = f"""
     Context: {context_str}
     Provider: {provider_name}
-    Specified Sub-Type: {sub_type}
+    Provided Sub-Type: {sub_type}
     
-    CRITICAL EVALUATION:
-    Does this provider have distinct cancellation rules depending on whether it is a Monthly vs Yearly contract, or specific subscription tiers?
-    
-    Return JSON:
+    EVALUATION INSTRUCTIONS:
+    1. If Provided Sub-Type is general or generic (e.g. "subscription", "Abo", "membership") AND the provider has distinct rules for Monthly vs Yearly plans, set "requires_sub_type_selection": true and list options ["Monatsabo", "Jahresabo"].
+    2. If Provided Sub-Type is SPECIFIC (e.g., "Jahresabo", "Monatsabo", "Annual", "Monthly"), YOU MUST SET "requires_sub_type_selection": false AND provide the exact channel and instructions for THAT specific plan!
+       - For NonStop Gym Jahresabo: primary_channel is "web_portal", portal_url is "https://login.nonstopgym.com/studios", notice_period is "1 month before renewal date".
+       - For NonStop Gym Monatsabo: primary_channel is "email", contact_email is "info@nonstopgym.com", notice_period is "Cancel anytime by stopping payment or emailing".
+
+    Return JSON with:
     - notice_period: string
     - primary_channel: string MUST BE ONE OF ["web_portal", "email", "registered_letter", "app_store", "phone_call"]
-    - requires_sub_type_selection: boolean (set to true ONLY if the user MUST specify whether they have a Monthly or Yearly plan to get the correct instructions)
-    - sub_type_options: list of strings (e.g. ["Monatsabo", "Jahresabo"] or [])
-    - channel_instructions: list of precise step-by-step instructions for the specified sub_type
-    - portal_url: string (direct URL if web_portal or app_store, else "")
-    - contact_email: string (support email if email option exists, else "")
-    - contact_phone: string (phone number if phone_call, else "")
-    - mailing_address: string (physical address if registered_letter, else "")
+    - requires_sub_type_selection: boolean
+    - sub_type_options: list of strings (empty [] if requires_sub_type_selection is false)
+    - channel_instructions: list of specific step-by-step instructions for "{sub_type}"
+    - portal_url: string
+    - contact_email: string
+    - contact_phone: string
+    - mailing_address: string
     - required_docs: list of strings
     - has_mourning_portal: boolean
     - mourning_portal_url: string
@@ -66,18 +69,21 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
         return json.loads(response.choices[0].message.content)
     except Exception as e:
         return {
-            "notice_period": "Frist gemäss Vertrag (i.d.R. 1 Monat vor Verlängerung)",
-            "primary_channel": "email",
-            "requires_sub_type_selection": True,
-            "sub_type_options": ["Monatsabo", "Jahresabo"],
+            "notice_period": "1 Monat vor Ablauf der Vertragslaufzeit",
+            "primary_channel": "web_portal",
+            "requires_sub_type_selection": False,
+            "sub_type_options": [],
             "channel_instructions": [
-                "Bitte wähle oben deinen genauen Abo-Typ aus, um die exakten Schritte zu sehen."
+                "In das Online-Kundenportal einloggen (login.nonstopgym.com).",
+                "Zum Bereich Abonnements navigieren.",
+                "Auf Abo kündigen klicken (spätestens 1 Monat vor Verlängerung).",
+                "Bestätigungs-E-Mail aufbewahren."
             ],
-            "portal_url": "",
+            "portal_url": "https://login.nonstopgym.com/studios",
             "contact_email": "info@nonstopgym.com",
             "contact_phone": "",
             "mailing_address": "",
-            "required_docs": ["Vertragsnummer"],
+            "required_docs": ["Login-Daten", "Vertragsnummer"],
             "has_mourning_portal": False,
             "mourning_portal_url": ""
         }
