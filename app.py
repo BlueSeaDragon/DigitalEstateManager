@@ -385,6 +385,196 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         st.rerun()
 
 
+@st.dialog("Cancellation & Account Closure Guide", width="large")
+def cancellation_guide_dialog(asset: Asset):
+    """Dialogue box guiding the user through manual cancellation and service closure.
+
+    Explains why direct automated cancellation may not be possible, provides known portal
+    links, step-by-step checklists, prepared email drafts, and recommended tasks.
+    """
+    st.markdown(f"### 🚫 Cancel / Close: **{asset.service}**")
+
+    # Header summary cards
+    b1, b2, b3 = st.columns(3)
+    b1.write(f"**Account Identifier:** `{asset.username or 'N/A'}`")
+    b2.write(f"**Asset Category:** {asset.category}")
+    b3.write(f"**Cost / Approx. Value:** {asset.cost_display}")
+
+    # Display known details
+    details = asset.asset_info.display_details()
+    if details:
+        st.markdown("##### 📌 Known Account Information")
+        d_cols = st.columns(min(len(details), 4))
+        for idx, (k, v) in enumerate(details.items()):
+            d_cols[idx % min(len(details), 4)].write(f"**{k}:** {v}")
+
+    st.info(
+        "💡 **Why manual action is needed**: Service providers require direct account authentication "
+        "or signed support requests to terminate recurring billing and prevent unauthorized account closures. "
+        "Follow the known steps below to execute this action."
+    )
+
+    plan = asset.cancel_policy.get_owner_cancellation_plan(
+        service=asset.service,
+        service_address=asset.service_address,
+        username=asset.username,
+    )
+
+    portal_url = plan.get("portal_url") or asset.cancel_policy.target_url or asset.service_address
+    if portal_url and portal_url.startswith("http"):
+        st.link_button(
+            f"🔗 Open {asset.service} Cancellation / Account Settings",
+            portal_url,
+            type="primary",
+            width="stretch",
+            help="Opens the provider portal in a new tab so you can follow the steps below.",
+        )
+
+    # 1. Step-by-Step Instructions
+    st.markdown("#### 📋 Step-by-Step Instructions")
+    steps = plan.get("steps", [])
+
+    if isinstance(asset.asset_info, FinancialAssetInfo):
+        steps = [
+            f"Sign in to your {asset.service} account ({asset.username}).",
+            f"Withdraw or transfer any remaining balance ({asset.cost_display}) to an external bank account or secure wallet.",
+            "Verify there are no open limit orders, pending deposits, or active staking contracts.",
+            "Navigate to Profile / Security > Close Account or submit an account termination ticket.",
+            "Save the final statement or account closure confirmation receipt for your financial records.",
+        ]
+    elif isinstance(asset.asset_info, CloudStorageAssetInfo):
+        steps = [
+            f"Sign in to {asset.service} with '{asset.username}'.",
+            "Download or export any critical files, photos, or documents to a local hard drive.",
+            "Navigate to Storage Management / Plan Settings.",
+            "Downgrade to the free tier or click 'Cancel Subscription'.",
+            "Verify that shared links or team invitations are transferred or revoked.",
+        ]
+    elif isinstance(asset.asset_info, SocialMediaAssetInfo):
+        steps = [
+            f"Log into {asset.service} ({asset.username}).",
+            "Request a full data export (messages, photos, activity log) before termination.",
+            "Go to Settings & Privacy > Account Ownership and Control.",
+            "Choose between 'Deactivate Profile' (reversible) or 'Permanent Delete' (30-day grace period).",
+        ]
+    elif asset.cancel_policy.steps:
+        steps = asset.cancel_policy.steps
+
+    for idx, step in enumerate(steps, 1):
+        st.markdown(f"**{idx}.** {step}")
+
+    # Documents required (if any)
+    req_docs = asset.cancel_policy.required_documents or asset.death_policy.required_documents
+    if req_docs:
+        st.markdown("##### 📑 Required Documentation (if contacting legal/support)")
+        for doc in req_docs:
+            st.markdown(f"- {doc}")
+
+    # 2. Recommended Preparation Tasks
+    st.markdown("#### ⚡ Recommended Tasks Prior to Closure")
+    t1, t2 = st.columns(2)
+    with t1:
+        st.markdown("- **Export Receipts & Invoices**: Download historical billing receipts before access is revoked.")
+        st.markdown("- **Check Linked Services (SSO)**: Ensure no external websites use this account to log in.")
+    with t2:
+        st.markdown("- **Billing Cut-off**: Complete cancellation at least 24-48 hours before renewal to prevent charges.")
+        st.markdown("- **Verify Bank Authorizations**: Ensure recurring debit agreements are marked cancelled.")
+
+    # 3. Prepared Support Email Draft
+    st.markdown("#### ✉️ Prepared Support Cancellation Email")
+    st.caption("If direct web cancellation is unavailable or the account is locked, copy this pre-formatted email to support:")
+
+    email_draft = plan.get("email_draft", "")
+    st.text_area(
+        "Support Email Format",
+        email_draft,
+        height=130,
+        key=f"dialog_email_draft_{asset.id}",
+    )
+
+    support_email = plan.get("support_email") or asset.cancel_policy.support_email
+    if support_email:
+        mailto_url = f"mailto:{support_email}?subject=Cancellation%20Request%20-%20{asset.service}&body={email_draft.replace(chr(10), '%0D%0A')}"
+        st.link_button(f"✉️ Send Email to {support_email}", mailto_url, width="stretch")
+
+    st.divider()
+
+    # 4. Confirmation buttons
+    c_cancel, c_confirm = st.columns([1, 1], gap="medium", vertical_alignment="center")
+    with c_cancel:
+        if st.button("Keep Active / Dismiss", width="stretch", key=f"dlg_close_cancel_{asset.id}"):
+            st.rerun()
+    with c_confirm:
+        if st.button("✅ Confirm & Mark as Cancelled", type="primary", width="stretch", key=f"dlg_confirm_cancel_{asset.id}"):
+            asset.status = "Cancelled"
+            asset.cancel_policy.status = "Completed"
+            st.success(f"{asset.service} successfully marked as cancelled! Monthly spend updated.")
+            st.rerun()
+
+    st.caption("Was this account added by mistake? You can remove it from vault tracking instead.")
+    if st.button("🗑️ Remove Account from Vault Instead", key=f"dlg_switch_remove_{asset.id}", width="stretch"):
+        remove_account_dialog(asset)
+
+
+@st.dialog("Remove Account from Vault", width="medium")
+def remove_account_dialog(asset: Asset):
+    """Dialogue box for removing an account that was wrongly added.
+
+    Warns the user that removing from vault does not automatically cancel provider billing,
+    provides portal links if they also need to cancel, and allows safe removal to the Removed tab.
+    """
+    st.markdown(f"### 🗑️ Remove **{asset.service}** from Estate Vault")
+
+    b1, b2 = st.columns(2)
+    b1.write(f"**Account Identifier:** `{asset.username or 'N/A'}`")
+    b2.write(f"**Category:** {asset.category} | **Cost/Value:** {asset.cost_display}")
+
+    details = asset.asset_info.display_details()
+    if details:
+        det_summary = " • ".join([f"{k}: {v}" for k, v in details.items()])
+        st.caption(f"📌 Known details: {det_summary}")
+
+    st.warning(
+        "⚠️ **Important Provider Billing Advisory**:\n\n"
+        f"Removing this account from the **Digital Estate Vault** only deletes it from this tracking system. "
+        f"**It does NOT cancel your recurring subscription or close your account with {asset.service}.**\n\n"
+        f"If you have an active paid plan, you must still cancel it directly with {asset.service} to avoid future charges."
+    )
+
+    portal_url = asset.cancel_policy.target_url or asset.service_address
+    if portal_url and portal_url.startswith("http"):
+        st.link_button(
+            f"🔗 Visit {asset.service} to Cancel Billing Directly",
+            portal_url,
+            width="stretch",
+            help="Open the provider website to cancel subscription before removing.",
+        )
+
+    st.markdown("#### ℹ️ What happens when you remove this account?")
+    st.markdown(
+        "- The account will be **hidden from your active catalog** and excluded from monthly recurring spend.\n"
+        "- It will be safely archived in the **'🗑️ Removed'** tab.\n"
+        "- You can **restore it anytime** with 1 click if you made a mistake.\n"
+        "- For estate safety, executors can still see it in the audit records to prevent asset concealment."
+    )
+
+    st.divider()
+
+    c_keep, c_remove = st.columns([1, 1], gap="medium", vertical_alignment="center")
+    with c_keep:
+        if st.button("Keep in Vault", width="stretch", key=f"dlg_keep_{asset.id}"):
+            st.rerun()
+    with c_remove:
+        if st.button("🗑️ Confirm Removal", type="primary", width="stretch", key=f"dlg_confirm_remove_{asset.id}"):
+            asset.status = "Removed"
+            st.success(f"{asset.service} moved to the 'Removed' tab. You can restore it anytime.")
+            st.rerun()
+
+    st.caption("Looking to cancel the subscription rather than removing it from tracking?")
+    if st.button("🚫 Open Cancellation Guide Instead", key=f"dlg_switch_cancel_{asset.id}", width="stretch"):
+        cancellation_guide_dialog(asset)
+
+
 # =============================================================================
 # =============================================================================
 # PAGE 1: CATALOGUE PAGE
@@ -462,19 +652,17 @@ if st.session_state.active_page == "Catalogue":
                         with c3:
                             if sub.status != "Cancelled":
                                 if st.button("🚫 Cancel Subscription", key=f"cat_cancel_{sub.id}", width='stretch'):
-                                    sub.status = "Cancelled"
-                                    sub.cancel_policy.status = "Completed"
-                                    st.success(f"{sub.service} marked as cancelled! Monthly spend updated.")
-                                    st.rerun()
+                                    cancellation_guide_dialog(sub)
                             else:
                                 if st.button("🔄 Reactivate", key=f"cat_react_{sub.id}", width='stretch'):
                                     sub.status = "Active"
                                     sub.cancel_policy.status = "Pending"
                                     st.rerun()
+                                if st.button("📋 Cancellation Guide", key=f"cat_guide_sub_{sub.id}", width='stretch'):
+                                    cancellation_guide_dialog(sub)
 
                             if st.button("🗑️ Remove Account", key=f"cat_remove_sub_{sub.id}", width='stretch', help="Remove this account if added by mistake. You can view or restore it in the Removed tab."):
-                                sub.status = "Removed"
-                                st.rerun()
+                                remove_account_dialog(sub)
 
                         # Owner cancellation steps & email template
                         owner_plan = sub.cancel_policy.get_owner_cancellation_plan(
@@ -524,16 +712,16 @@ if st.session_state.active_page == "Catalogue":
                             if fin.service_address.startswith("http"):
                                 st.link_button("🔗 Open Platform", fin.service_address, width='stretch')
                             if fin.status != "Completed":
-                                if st.button("Close Account", key=f"cat_close_fin_{fin.id}", width='stretch'):
-                                    fin.status = "Completed"
-                                    st.rerun()
+                                if st.button("🚫 Close Account", key=f"cat_close_fin_{fin.id}", width='stretch'):
+                                    cancellation_guide_dialog(fin)
                             else:
-                                if st.button("Reopen Account", key=f"cat_reopen_fin_{fin.id}", width='stretch'):
+                                if st.button("🔄 Reopen Account", key=f"cat_reopen_fin_{fin.id}", width='stretch'):
                                     fin.status = "Active"
                                     st.rerun()
+                                if st.button("📋 Closure Guide", key=f"cat_guide_fin_{fin.id}", width='stretch'):
+                                    cancellation_guide_dialog(fin)
                             if st.button("🗑️ Remove Account", key=f"cat_remove_fin_{fin.id}", width='stretch', help="Remove this account if added by mistake. You can view or restore it in the Removed tab."):
-                                fin.status = "Removed"
-                                st.rerun()
+                                remove_account_dialog(fin)
             else:
                 st.info("No financial or crypto accounts cataloged. Click '➕ Add Asset' above to add one.")
 
@@ -564,16 +752,16 @@ if st.session_state.active_page == "Catalogue":
                             if cl.service_address.startswith("http"):
                                 st.link_button("🔗 Manage Storage", cl.service_address, width='stretch')
                             if cl.status != "Cancelled":
-                                if st.button("Cancel Plan", key=f"cat_cancel_cloud_{cl.id}", width='stretch'):
-                                    cl.status = "Cancelled"
-                                    st.rerun()
+                                if st.button("🚫 Cancel Plan", key=f"cat_cancel_cloud_{cl.id}", width='stretch'):
+                                    cancellation_guide_dialog(cl)
                             else:
-                                if st.button("Reactivate Plan", key=f"cat_react_cloud_{cl.id}", width='stretch'):
+                                if st.button("🔄 Reactivate Plan", key=f"cat_react_cloud_{cl.id}", width='stretch'):
                                     cl.status = "Active"
                                     st.rerun()
+                                if st.button("📋 Closure Guide", key=f"cat_guide_cloud_{cl.id}", width='stretch'):
+                                    cancellation_guide_dialog(cl)
                             if st.button("🗑️ Remove Account", key=f"cat_remove_cloud_{cl.id}", width='stretch', help="Remove this account if added by mistake. You can view or restore it in the Removed tab."):
-                                cl.status = "Removed"
-                                st.rerun()
+                                remove_account_dialog(cl)
             else:
                 st.info("No cloud storage assets cataloged. Click '➕ Add Asset' above to add one.")
 
@@ -606,16 +794,16 @@ if st.session_state.active_page == "Catalogue":
                             if portal and portal.startswith("http"):
                                 st.link_button("🔗 View Profile", portal, width='stretch')
                             if soc.status != "Archived":
-                                if st.button("Archive Profile", key=f"cat_close_soc_{soc.id}", width='stretch'):
-                                    soc.status = "Archived"
-                                    st.rerun()
+                                if st.button("🗄️ Archive / Close Profile", key=f"cat_close_soc_{soc.id}", width='stretch'):
+                                    cancellation_guide_dialog(soc)
                             else:
-                                if st.button("Unarchive Profile", key=f"cat_unarchive_soc_{soc.id}", width='stretch'):
+                                if st.button("🔄 Unarchive Profile", key=f"cat_unarchive_soc_{soc.id}", width='stretch'):
                                     soc.status = "Active"
                                     st.rerun()
+                                if st.button("📋 Closure Guide", key=f"cat_guide_soc_{soc.id}", width='stretch'):
+                                    cancellation_guide_dialog(soc)
                             if st.button("🗑️ Remove Account", key=f"cat_remove_soc_{soc.id}", width='stretch', help="Remove this account if added by mistake. You can view or restore it in the Removed tab."):
-                                soc.status = "Removed"
-                                st.rerun()
+                                remove_account_dialog(soc)
             else:
                 st.info("No social media accounts cataloged. Click '➕ Add Asset' above to add one.")
 
@@ -644,9 +832,17 @@ if st.session_state.active_page == "Catalogue":
                         with c2:
                             if oth.service_address.startswith("http"):
                                 st.link_button("🔗 Open Service", oth.service_address, width='stretch')
+                            if oth.status != "Cancelled":
+                                if st.button("🚫 Cancel Service", key=f"cat_cancel_oth_{oth.id}", width='stretch'):
+                                    cancellation_guide_dialog(oth)
+                            else:
+                                if st.button("🔄 Reactivate", key=f"cat_react_oth_{oth.id}", width='stretch'):
+                                    oth.status = "Active"
+                                    st.rerun()
+                                if st.button("📋 Closure Guide", key=f"cat_guide_oth_{oth.id}", width='stretch'):
+                                    cancellation_guide_dialog(oth)
                             if st.button("🗑️ Remove Account", key=f"cat_remove_oth_{oth.id}", width='stretch', help="Remove this account if added by mistake. You can view or restore it in the Removed tab."):
-                                oth.status = "Removed"
-                                st.rerun()
+                                remove_account_dialog(oth)
             else:
                 st.info("No other accounts cataloged. Click '➕ Add Asset' above to add one.")
 
@@ -677,6 +873,8 @@ if st.session_state.active_page == "Catalogue":
                                 rem.status = "Active"
                                 st.success(f"Restored {rem.service} back to the active catalog!")
                                 st.rerun()
+                            if st.button("📋 Cancellation Guide", key=f"cat_rem_guide_{rem.id}", width='stretch', help="View steps and email format to cancel recurring billing directly with provider."):
+                                cancellation_guide_dialog(rem)
             else:
                 st.info("No removed accounts. Any accounts removed from the categories above will be held safely here and can be restored at any time.")
 
