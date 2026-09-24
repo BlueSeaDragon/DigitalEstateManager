@@ -117,16 +117,13 @@ metrics = calculate_metrics(current_assets)
 def get_assets_by_type():
     # Active accounts (excluding removed by owner)
     active_pool = [a for a in current_assets if a.status != "Removed"]
-    subs = [a for a in active_pool if isinstance(a.asset_info, SubscriptionAssetInfo)]
-    fin = [a for a in active_pool if isinstance(a.asset_info, FinancialAssetInfo)]
-    cloud = [a for a in active_pool if isinstance(a.asset_info, CloudStorageAssetInfo)]
-    social = [a for a in active_pool if isinstance(a.asset_info, SocialMediaAssetInfo)]
+    subs = [a for a in active_pool if a.has_type("Subscription")]
+    fin = [a for a in active_pool if a.has_type("Crypto / Finance")]
+    cloud = [a for a in active_pool if a.has_type("Cloud Storage")]
+    social = [a for a in active_pool if a.has_type("Social Media")]
     other = [
         a for a in active_pool
-        if not isinstance(
-            a.asset_info,
-            (SubscriptionAssetInfo, FinancialAssetInfo, CloudStorageAssetInfo, SocialMediaAssetInfo),
-        )
+        if a.has_type("Other") or not any(a.has_type(t) for t in ["Subscription", "Crypto / Finance", "Cloud Storage", "Social Media"])
     ]
     removed = [a for a in current_assets if a.status == "Removed"]
     wrongly_attributed = [a for a in current_assets if a.status == "Wrongly Attributed"]
@@ -215,11 +212,12 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
     # When opening for a different default category, update session state key
     key_cat = "modal_dialog_category"
     if st.session_state.get("_last_dialog_default") != default_category:
-        st.session_state[key_cat] = default_category
+        st.session_state[key_cat] = [default_category] if default_category in categories else ["Subscription"]
         st.session_state["_last_dialog_default"] = default_category
 
-    current_cat = st.session_state.get(key_cat, default_category)
-    default_index = categories.index(current_cat) if current_cat in categories else 0
+    current_cats = st.session_state.get(key_cat, [default_category])
+    if isinstance(current_cats, str):
+        current_cats = [current_cats] if current_cats in categories else ["Subscription"]
 
     # Row 1: Service Name and Provider Website / Address
     r1_c1, r1_c2 = st.columns(2, vertical_alignment="bottom")
@@ -236,7 +234,7 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             key="modal_website",
         )
 
-    # Row 2: Account Identifier and Asset Type
+    # Row 2: Account Identifier and Asset Types (Multi-select)
     r2_c1, r2_c2 = st.columns(2, vertical_alignment="bottom")
     with r2_c1:
         username_input = st.text_input(
@@ -245,19 +243,21 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             key="modal_username",
         )
     with r2_c2:
-        # Category dropdown immediately updates type-specific fields below
-        selected_category = st.selectbox(
-            "Asset Type*",
+        selected_categories = st.multiselect(
+            "Asset Type(s)* (Select one or more)",
             categories,
-            index=default_index,
+            default=current_cats,
             key=key_cat,
-            help="Selecting a type dynamically displays the specialized fields for that category.",
+            help="An asset can belong to multiple categories simultaneously (e.g. Subscription + Cloud Storage for Google One).",
         )
+        if not selected_categories:
+            selected_categories = ["Other"]
 
     st.markdown("###### Type-Specific Information")
 
-    # DYNAMIC FIELDS - Re-renders immediately when selected_category changes
-    if selected_category == "Subscription":
+    # DYNAMIC FIELDS - Displays fields for each selected category
+    if "Subscription" in selected_categories:
+        st.markdown("**💳 Subscription & Recurring Billing**")
         sub_c1, sub_c2, sub_c3 = st.columns(3, vertical_alignment="top")
         with sub_c1:
             cost_val = st.number_input("Monthly Cost ($)", min_value=0.0, value=12.99, step=1.0, key="modal_sub_cost")
@@ -267,7 +267,8 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             tier_val = st.text_input("Plan Tier / Name", placeholder="e.g. Premium Individual, Family", key="modal_sub_tier")
         renewal_val = st.text_input("Next Renewal Date (Optional)", placeholder="YYYY-MM-DD", key="modal_sub_renewal")
 
-    elif selected_category == "Crypto / Finance":
+    if "Crypto / Finance" in selected_categories:
+        st.markdown("**💰 Financial & Crypto Accounts**")
         fin_c1, fin_c2, fin_c3 = st.columns(3, vertical_alignment="top")
         with fin_c1:
             balance_val = st.number_input("Estimated Value / Balance ($)", min_value=0.0, value=1500.0, step=100.0, key="modal_fin_balance")
@@ -277,7 +278,8 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             custody_val = st.selectbox("Custody Model", ["Custodial (Exchange/Bank)", "Self-Custody (Private Key/Wallet)"], key="modal_fin_custody")
         probate_val = st.checkbox("Requires Probate Court Resolution", value=True, key="modal_fin_probate")
 
-    elif selected_category == "Cloud Storage":
+    if "Cloud Storage" in selected_categories:
+        st.markdown("**☁️ Cloud Storage & Document Vaults**")
         cl_c1, cl_c2 = st.columns(2, vertical_alignment="top")
         with cl_c1:
             cap_val = st.number_input("Storage Capacity (GB)", min_value=1.0, value=100.0, step=10.0, key="modal_cloud_cap")
@@ -291,7 +293,8 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         )
         sens_val = st.checkbox("Contains Confidential / Sensitive Documents", value=True, key="modal_cloud_sens")
 
-    elif selected_category == "Social Media":
+    if "Social Media" in selected_categories:
+        st.markdown("**📱 Social Media & Online Profiles**")
         soc_c1, soc_c2 = st.columns(2, vertical_alignment="top")
         with soc_c1:
             handle_val = st.text_input("Platform Handle / Profile Name", placeholder="@alex", key="modal_soc_handle")
@@ -300,7 +303,8 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         soc_mem_val = st.checkbox("Platform Supports Memorialization Policy", value=True, key="modal_soc_mem")
         soc_leg_val = st.checkbox("Legacy Contact Pre-configured in Platform Settings", value=False, key="modal_soc_leg")
 
-    else:
+    if "Other" in selected_categories or not any(c in selected_categories for c in ["Subscription", "Crypto / Finance", "Cloud Storage", "Social Media"]):
+        st.markdown("**📁 Other Account Details**")
         custom_cat_val = st.text_input("Custom Category Name", value="Digital Account", key="modal_other_name")
         custom_notes_val = st.text_area("Account Notes & Description", key="modal_other_notes")
 
@@ -331,38 +335,49 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             st.error("Please enter both the Service Name and Account Identifier / Username.")
             return
 
-        if selected_category == "Subscription":
-            info_obj = SubscriptionAssetInfo(
-                cost_monthly=cost_val,
-                billing_cycle=billing_val,
-                plan_tier=tier_val.strip() if tier_val else None,
-                renewal_date=renewal_val.strip() if renewal_val else None,
+        infos_to_add: List[AnyAssetInfo] = []
+        if "Subscription" in selected_categories:
+            infos_to_add.append(
+                SubscriptionAssetInfo(
+                    cost_monthly=cost_val,
+                    billing_cycle=billing_val,
+                    plan_tier=tier_val.strip() if tier_val else None,
+                    renewal_date=renewal_val.strip() if renewal_val else None,
+                )
             )
-        elif selected_category == "Crypto / Finance":
-            info_obj = FinancialAssetInfo(
-                approximate_balance=balance_val,
-                institution_type=inst_val,
-                is_custodial=("Custodial" in custody_val),
-                requires_probate=probate_val,
+        if "Crypto / Finance" in selected_categories:
+            infos_to_add.append(
+                FinancialAssetInfo(
+                    approximate_balance=balance_val,
+                    institution_type=inst_val,
+                    is_custodial=("Custodial" in custody_val),
+                    requires_probate=probate_val,
+                )
             )
-        elif selected_category == "Cloud Storage":
-            info_obj = CloudStorageAssetInfo(
-                storage_capacity_gb=cap_val,
-                used_storage_gb=used_val,
-                data_types=data_types_val,
-                contains_sensitive_data=sens_val,
+        if "Cloud Storage" in selected_categories:
+            infos_to_add.append(
+                CloudStorageAssetInfo(
+                    storage_capacity_gb=cap_val,
+                    used_storage_gb=used_val,
+                    data_types=data_types_val,
+                    contains_sensitive_data=sens_val,
+                )
             )
-        elif selected_category == "Social Media":
-            info_obj = SocialMediaAssetInfo(
-                platform_handle=handle_val.strip() if handle_val else None,
-                profile_url=profile_url_val.strip() if profile_url_val else None,
-                memorialization_supported=soc_mem_val,
-                has_legacy_contact_set=soc_leg_val,
+        if "Social Media" in selected_categories:
+            infos_to_add.append(
+                SocialMediaAssetInfo(
+                    platform_handle=handle_val.strip() if handle_val else None,
+                    profile_url=profile_url_val.strip() if profile_url_val else None,
+                    memorialization_supported=soc_mem_val,
+                    has_legacy_contact_set=soc_leg_val,
+                )
             )
-        else:
-            info_obj = GenericAssetInfo(
-                category_name=custom_cat_val.strip() or "Digital Account",
-                notes=custom_notes_val.strip() if custom_notes_val else None,
+        if "Other" in selected_categories or not infos_to_add:
+            infos_to_add.append(
+                GenericAssetInfo(
+                    category_name=custom_cat_val.strip() or "Digital Account",
+                    notes=custom_notes_val.strip() if custom_notes_val else None,
+                )
             )
 
         default_death, default_cancel = get_policies_for_service(service_input, website_input)
@@ -374,14 +389,14 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             username=username_input.strip(),
             death_policy=default_death,
             cancel_policy=default_cancel,
-            asset_info=info_obj,
+            asset_infos=infos_to_add,
             heir=heir_input.strip() or "Unassigned",
             status="Active",
             notes=notes_input.strip() if notes_input else None,
         )
 
         st.session_state.assets.append(new_asset)
-        st.success(f"✅ Successfully cataloged **{new_asset.service}** ({new_asset.username})!")
+        st.success(f"✅ Successfully cataloged **{new_asset.service}** ({new_asset.username}) with categories: {', '.join(new_asset.types)}!")
         st.rerun()
 
 
@@ -397,11 +412,11 @@ def cancellation_guide_dialog(asset: Asset):
     # Header summary cards
     b1, b2, b3 = st.columns(3)
     b1.write(f"**Account Identifier:** `{asset.username or 'N/A'}`")
-    b2.write(f"**Asset Category:** {asset.category}")
+    b2.write(f"**Asset Categories:** {asset.category}")
     b3.write(f"**Cost / Approx. Value:** {asset.cost_display}")
 
     # Display known details
-    details = asset.asset_info.display_details()
+    details = asset.display_details()
     if details:
         st.markdown("##### 📌 Known Account Information")
         d_cols = st.columns(min(len(details), 4))
@@ -430,35 +445,33 @@ def cancellation_guide_dialog(asset: Asset):
             help="Opens the provider portal in a new tab so you can follow the steps below.",
         )
 
-    # 1. Step-by-Step Instructions
+    # 1. Step-by-Step Instructions (Built for all types associated with this asset)
     st.markdown("#### 📋 Step-by-Step Instructions")
-    steps = plan.get("steps", [])
+    steps = []
 
-    if isinstance(asset.asset_info, FinancialAssetInfo):
-        steps = [
-            f"Sign in to your {asset.service} account ({asset.username}).",
-            f"Withdraw or transfer any remaining balance ({asset.cost_display}) to an external bank account or secure wallet.",
-            "Verify there are no open limit orders, pending deposits, or active staking contracts.",
-            "Navigate to Profile / Security > Close Account or submit an account termination ticket.",
-            "Save the final statement or account closure confirmation receipt for your financial records.",
-        ]
-    elif isinstance(asset.asset_info, CloudStorageAssetInfo):
-        steps = [
-            f"Sign in to {asset.service} with '{asset.username}'.",
-            "Download or export any critical files, photos, or documents to a local hard drive.",
-            "Navigate to Storage Management / Plan Settings.",
-            "Downgrade to the free tier or click 'Cancel Subscription'.",
-            "Verify that shared links or team invitations are transferred or revoked.",
-        ]
-    elif isinstance(asset.asset_info, SocialMediaAssetInfo):
-        steps = [
-            f"Log into {asset.service} ({asset.username}).",
-            "Request a full data export (messages, photos, activity log) before termination.",
-            "Go to Settings & Privacy > Account Ownership and Control.",
-            "Choose between 'Deactivate Profile' (reversible) or 'Permanent Delete' (30-day grace period).",
-        ]
-    elif asset.cancel_policy.steps:
-        steps = asset.cancel_policy.steps
+    if asset.has_type("Subscription"):
+        sub_i = asset.get_info("Subscription")
+        sub_cost_str = sub_i.get_cost_display() if sub_i else asset.cost_display
+        steps.append(f"Sign in to {asset.service} ({asset.username}) and navigate to Subscription / Billing.")
+        steps.append(f"Cancel the active recurring subscription ({sub_cost_str}) to prevent further renewal charges.")
+
+    if asset.has_type("Cloud Storage"):
+        cl_i = asset.get_info("Cloud Storage")
+        used_str = f"{cl_i.used_storage_gb:.1f} GB" if cl_i and cl_i.used_storage_gb is not None else "stored files"
+        steps.append(f"Download or export critical data ({used_str}) using provider takeout or local backup before storage termination.")
+        steps.append("Revoke shared links and downgrade storage plan.")
+
+    if asset.has_type("Crypto / Finance"):
+        steps.append(f"Withdraw or transfer remaining balance ({asset.cost_display}) to an external verified bank or secure wallet.")
+        steps.append("Verify there are no open limit orders, pending staking periods, or outstanding debts.")
+        steps.append("Navigate to Security / Settings > Close Account or submit an account termination ticket.")
+
+    if asset.has_type("Social Media"):
+        steps.append(f"Export social media archives, photos, and messages before closing the profile.")
+        steps.append("Decide between profile deactivation, permanent deletion, or legacy memorialization.")
+
+    if not steps:
+        steps = plan.get("steps", [f"Sign in to {asset.service} and submit an account closure request."])
 
     for idx, step in enumerate(steps, 1):
         st.markdown(f"**{idx}.** {step}")
@@ -529,7 +542,7 @@ def remove_account_dialog(asset: Asset):
     b1.write(f"**Account Identifier:** `{asset.username or 'N/A'}`")
     b2.write(f"**Category:** {asset.category} | **Cost/Value:** {asset.cost_display}")
 
-    details = asset.asset_info.display_details()
+    details = asset.display_details()
     if details:
         det_summary = " • ".join([f"{k}: {v}" for k, v in details.items()])
         st.caption(f"📌 Known details: {det_summary}")
@@ -630,18 +643,23 @@ if st.session_state.active_page == "Catalogue":
                     modal_add_asset_dialog(default_category="Subscription")
 
             if subs_list:
-                sub_rows = [a.to_type_specific_dict() for a in subs_list]
+                sub_rows = [a.to_type_specific_dict(target_type="Subscription") for a in subs_list]
                 st.dataframe(pd.DataFrame(sub_rows), width='stretch')
 
                 st.markdown("##### ⚙️ Subscription Actions & Cancellation Center")
                 for sub in subs_list:
+                    sub_info = sub.get_info("Subscription") or sub.asset_info
                     status_badge = "🔴 Cancelled" if sub.status == "Cancelled" else "🟢 Active"
-                    card_title = f"{sub.service} — {sub.username} [{status_badge} | {sub.cost_display}]"
+                    multi_badge = f" [🏷️ {sub.category}]" if len(sub.types) > 1 else ""
+                    card_title = f"{sub.service} — {sub.username} [{status_badge} | {sub.cost_display}]{multi_badge}"
 
                     with st.expander(card_title, expanded=(sub.status != "Cancelled")):
                         c1, c2, c3 = st.columns([2, 1, 1])
-                        c1.write(f"**Plan Tier:** {getattr(sub.asset_info, 'plan_tier', 'Standard')} | **Billing:** {getattr(sub.asset_info, 'billing_cycle', 'monthly').capitalize()}")
-                        c1.write(f"**Next Renewal Date:** {getattr(sub.asset_info, 'renewal_date', 'N/A')}")
+                        c1.write(f"**Plan Tier:** {getattr(sub_info, 'plan_tier', 'Standard')} | **Billing:** {getattr(sub_info, 'billing_cycle', 'monthly').capitalize()}")
+                        c1.write(f"**Next Renewal Date:** {getattr(sub_info, 'renewal_date', 'N/A')}")
+                        if len(sub.types) > 1:
+                            other_types = [t for t in sub.types if t != "Subscription"]
+                            c1.caption(f"ℹ️ Also cataloged under: **{', '.join(other_types)}**")
                         c1.write(f"**Assigned Heir:** {sub.heir}")
 
                         with c2:
@@ -695,17 +713,22 @@ if st.session_state.active_page == "Catalogue":
                     modal_add_asset_dialog(default_category="Crypto / Finance")
 
             if fin_list:
-                fin_rows = [a.to_type_specific_dict() for a in fin_list]
+                fin_rows = [a.to_type_specific_dict(target_type="Crypto / Finance") for a in fin_list]
                 st.dataframe(pd.DataFrame(fin_rows), width='stretch')
 
                 for fin in fin_list:
+                    fin_info = fin.get_info("Crypto / Finance") or fin.asset_info
                     status_badge = "🔴 Closed" if fin.status == "Completed" else "🟢 Active"
-                    with st.expander(f"{fin.service} — {fin.username} [{status_badge}]"):
+                    multi_badge = f" [🏷️ {fin.category}]" if len(fin.types) > 1 else ""
+                    with st.expander(f"{fin.service} — {fin.username} [{status_badge} | {fin.cost_display}]{multi_badge}"):
                         c1, c2 = st.columns([2, 1])
-                        c1.write(f"**Institution:** {getattr(fin.asset_info, 'institution_type', '').title()}")
-                        c1.write(f"**Approx. Balance:** {fin.cost_display}")
-                        c1.write(f"**Custody Type:** {'Custodial (Exchange/Bank)' if getattr(fin.asset_info, 'is_custodial', True) else 'Self-Custody (Wallet)'}")
-                        c1.write(f"**Probate Required:** {'Yes' if getattr(fin.asset_info, 'requires_probate', True) else 'No'}")
+                        c1.write(f"**Institution:** {getattr(fin_info, 'institution_type', '').title()}")
+                        c1.write(f"**Approx. Balance / Valuation:** {fin.cost_display}")
+                        c1.write(f"**Custody Type:** {'Custodial (Exchange/Bank)' if getattr(fin_info, 'is_custodial', True) else 'Self-Custody (Wallet)'}")
+                        c1.write(f"**Probate Required:** {'Yes' if getattr(fin_info, 'requires_probate', True) else 'No'}")
+                        if len(fin.types) > 1:
+                            other_types = [t for t in fin.types if t != "Crypto / Finance"]
+                            c1.caption(f"ℹ️ Also cataloged under: **{', '.join(other_types)}**")
                         c1.write(f"**Designated Heir:** {fin.heir}")
 
                         with c2:
@@ -737,15 +760,20 @@ if st.session_state.active_page == "Catalogue":
                     modal_add_asset_dialog(default_category="Cloud Storage")
 
             if cloud_list:
-                cloud_rows = [a.to_type_specific_dict() for a in cloud_list]
+                cloud_rows = [a.to_type_specific_dict(target_type="Cloud Storage") for a in cloud_list]
                 st.dataframe(pd.DataFrame(cloud_rows), width='stretch')
 
                 for cl in cloud_list:
-                    with st.expander(f"{cl.service} — {cl.username} [{cl.status}]"):
+                    cl_info = cl.get_info("Cloud Storage") or cl.asset_info
+                    multi_badge = f" [🏷️ {cl.category}]" if len(cl.types) > 1 else ""
+                    with st.expander(f"{cl.service} — {cl.username} [{cl.status}]{multi_badge}"):
                         c1, c2 = st.columns([2, 1])
-                        c1.write(f"**Storage Capacity:** {getattr(cl.asset_info, 'storage_capacity_gb', 'N/A')} GB | **Used:** {getattr(cl.asset_info, 'used_storage_gb', 'N/A')} GB")
-                        c1.write(f"**Stored Content:** {', '.join(getattr(cl.asset_info, 'data_types', []))}")
-                        c1.write(f"**Contains Sensitive Documents:** {'Yes' if getattr(cl.asset_info, 'contains_sensitive_data', True) else 'No'}")
+                        c1.write(f"**Storage Capacity:** {getattr(cl_info, 'storage_capacity_gb', 'N/A')} GB | **Used:** {getattr(cl_info, 'used_storage_gb', 'N/A')} GB")
+                        c1.write(f"**Stored Content:** {', '.join(getattr(cl_info, 'data_types', []))}")
+                        c1.write(f"**Contains Sensitive Documents:** {'Yes' if getattr(cl_info, 'contains_sensitive_data', True) else 'No'}")
+                        if len(cl.types) > 1:
+                            other_types = [t for t in cl.types if t != "Cloud Storage"]
+                            c1.caption(f"ℹ️ Also cataloged under: **{', '.join(other_types)}**")
                         c1.write(f"**Designated Heir:** {cl.heir}")
 
                         with c2:
@@ -777,20 +805,25 @@ if st.session_state.active_page == "Catalogue":
                     modal_add_asset_dialog(default_category="Social Media")
 
             if social_list:
-                social_rows = [a.to_type_specific_dict() for a in social_list]
+                social_rows = [a.to_type_specific_dict(target_type="Social Media") for a in social_list]
                 st.dataframe(pd.DataFrame(social_rows), width='stretch')
 
                 for soc in social_list:
-                    with st.expander(f"{soc.service} — {soc.username} [{soc.status}]"):
+                    soc_info = soc.get_info("Social Media") or soc.asset_info
+                    multi_badge = f" [🏷️ {soc.category}]" if len(soc.types) > 1 else ""
+                    with st.expander(f"{soc.service} — {soc.username} [{soc.status}]{multi_badge}"):
                         c1, c2 = st.columns([2, 1])
-                        c1.write(f"**Platform Profile:** {getattr(soc.asset_info, 'profile_url', soc.service_address)}")
-                        c1.write(f"**Handle:** {getattr(soc.asset_info, 'platform_handle', soc.username)}")
-                        c1.write(f"**Memorialization Supported:** {'Yes' if getattr(soc.asset_info, 'memorialization_supported', True) else 'No'}")
-                        c1.write(f"**Legacy Contact Set:** {'Yes' if getattr(soc.asset_info, 'has_legacy_contact_set', False) else 'Not Configured'}")
+                        c1.write(f"**Platform Profile:** {getattr(soc_info, 'profile_url', soc.service_address)}")
+                        c1.write(f"**Handle:** {getattr(soc_info, 'platform_handle', soc.username)}")
+                        c1.write(f"**Memorialization Supported:** {'Yes' if getattr(soc_info, 'memorialization_supported', True) else 'No'}")
+                        c1.write(f"**Legacy Contact Set:** {'Yes' if getattr(soc_info, 'has_legacy_contact_set', False) else 'Not Configured'}")
+                        if len(soc.types) > 1:
+                            other_types = [t for t in soc.types if t != "Social Media"]
+                            c1.caption(f"ℹ️ Also cataloged under: **{', '.join(other_types)}**")
                         c1.write(f"**Designated Heir:** {soc.heir}")
 
                         with c2:
-                            portal = getattr(soc.asset_info, "profile_url", None) or soc.service_address
+                            portal = getattr(soc_info, "profile_url", None) or soc.service_address
                             if portal and portal.startswith("http"):
                                 st.link_button("🔗 View Profile", portal, width='stretch')
                             if soc.status != "Archived":
@@ -966,12 +999,14 @@ if st.session_state.active_page == "Catalogue":
                     elif is_rem_owner:
                         st.warning("🗑️ **Marked as Removed by Account Owner**: This account was removed from active view by the owner before passing. It is retained in the estate records to prevent fraudulent concealment of assets.")
 
-                    details = asset_obj.asset_info.display_details()
-                    d_cols = st.columns(len(details) + 2)
-                    d_cols[0].write(f"**Provider URL:** {asset_obj.service_address or 'N/A'}")
-                    d_cols[1].write(f"**Username:** {asset_obj.username or 'N/A'}")
-                    for c, (k, v) in zip(d_cols[2:], details.items()):
-                        c.write(f"**{k}:** {v}")
+                    details = asset_obj.display_details()
+                    d1, d2 = st.columns(2)
+                    d1.write(f"**Provider URL:** {asset_obj.service_address or 'N/A'}")
+                    d2.write(f"**Username / Identifier:** {asset_obj.username or 'N/A'}")
+                    if details:
+                        det_cols = st.columns(min(len(details), 4))
+                        for idx, (k, v) in enumerate(details.items()):
+                            det_cols[idx % min(len(details), 4)].write(f"**{k}:** {v}")
 
                     st.divider()
 

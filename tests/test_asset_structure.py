@@ -168,6 +168,79 @@ def test_owner_removal_and_wrongly_attributed_audit():
     assert rebuilt_wrong.status == "Wrongly Attributed"
 
 
+def test_multi_type_assets():
+    death_pol, cancel_pol = get_policies_for_service("Google One", "https://one.google.com")
+    multi_asset = Asset(
+        service="Google One",
+        service_address="https://one.google.com",
+        username="alex.backup@gmail.com",
+        death_policy=death_pol,
+        cancel_policy=cancel_pol,
+        asset_infos=[
+            CloudStorageAssetInfo(
+                storage_capacity_gb=200.0,
+                used_storage_gb=85.0,
+                contains_sensitive_data=True,
+                data_types=["Photos", "Tax Returns"],
+            ),
+            SubscriptionAssetInfo(
+                cost_monthly=2.99,
+                plan_tier="200 GB Plan",
+                billing_cycle="monthly",
+                renewal_date="2026-10-15",
+            ),
+        ],
+        heir="Jordan",
+        status="Active",
+    )
+
+    # 1. Multi-type identification
+    assert len(multi_asset.types) == 2
+    assert "Cloud Storage" in multi_asset.types
+    assert "Subscription" in multi_asset.types
+    assert multi_asset.has_type("Cloud Storage")
+    assert multi_asset.has_type("Subscription")
+    assert not multi_asset.has_type("Crypto / Finance")
+    assert "Cloud Storage, Subscription" in multi_asset.category
+
+    # 2. Get info by type
+    cloud_info = multi_asset.get_info("Cloud Storage")
+    sub_info = multi_asset.get_info("Subscription")
+    assert isinstance(cloud_info, CloudStorageAssetInfo)
+    assert cloud_info.storage_capacity_gb == 200.0
+    assert isinstance(sub_info, SubscriptionAssetInfo)
+    assert sub_info.cost_monthly == 2.99
+
+    # 3. Cost aggregation
+    assert multi_asset.cost_monthly == 2.99
+    assert multi_asset.cost_display == "$2.99/mo"
+
+    # 4. Tailored type-specific dict representations
+    sub_dict = multi_asset.to_type_specific_dict(target_type="Subscription")
+    assert "Plan" in sub_dict
+    assert sub_dict["Plan"] == "200 GB Plan"
+    assert "Monthly Cost" in sub_dict
+
+    cloud_dict = multi_asset.to_type_specific_dict(target_type="Cloud Storage")
+    assert "Capacity" in cloud_dict
+    assert cloud_dict["Capacity"] == "200 GB"
+    assert cloud_dict["Used"] == "85.0 GB"
+
+    # 5. Adding another type dynamically (e.g. Social Media presence)
+    multi_asset.add_type_info(SocialMediaAssetInfo(platform_handle="@alex_google"))
+    assert multi_asset.has_type("Social Media")
+    assert len(multi_asset.types) == 3
+
+    # 6. Table serialization with multiple types
+    t_row = multi_asset.to_table_row()
+    assert "Cloud Storage" in t_row["Type"]
+    assert "Subscription" in t_row["Type"]
+
+    rebuilt = Asset.from_table_row(t_row)
+    assert rebuilt.has_type("Cloud Storage")
+    assert rebuilt.has_type("Subscription")
+
+
 if __name__ == "__main__":
     test_asset_info_polymorphism()
     test_cancel_policy_execution()
@@ -175,6 +248,7 @@ if __name__ == "__main__":
     test_default_assets_and_metrics()
     test_owner_cancellation_and_type_specific_dict()
     test_owner_removal_and_wrongly_attributed_audit()
+    test_multi_type_assets()
     print("ALL TESTS PASSED SUCCESSFULLY!")
 
 
