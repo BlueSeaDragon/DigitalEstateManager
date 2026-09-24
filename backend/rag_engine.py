@@ -11,7 +11,7 @@ client = OpenAI(
 APERTUS_MODEL = "swiss-ai/Apertus-v1.5-70B"
 
 def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscription", mode: str = "during_life") -> dict:
-    query = f"{provider_name} {sub_type} Kündigung Kündigungsfrist Adresse Schweiz"
+    query = f"{provider_name} {sub_type} Kündigung Schweiz Nachlass Todesfall" if mode == "after_death" else f"{provider_name} {sub_type} Kündigung Schweiz"
     search_results = []
     
     with DDGS() as ddgs:
@@ -21,17 +21,23 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
             
     context_str = "\n\n".join(search_results)
     
-    system_prompt = "You extract cancellation details into valid JSON."
+    system_prompt = "You determine the primary cancellation channel and extract structured information into valid JSON."
     user_prompt = f"""
     Context: {context_str}
     Provider: {provider_name}
+    Mode: {mode}
     
     Extract JSON with:
-    - notice_period: string
-    - summary_bullets: list of short step strings
-    - direct_links: list of URLs
-    - required_docs: list of strings
-    - recipient_address: physical mailing address for cancellation
+    - notice_period: string (e.g. "3 months to month end")
+    - primary_channel: string MUST BE ONE OF ["web_portal", "email", "registered_letter", "app_store", "phone_call"]
+    - channel_instructions: list of clear, short step-by-step strings for the user
+    - portal_url: string (direct URL if web_portal or app_store, else "")
+    - contact_email: string (support email if email, else "")
+    - contact_phone: string (phone number if phone_call, else "")
+    - mailing_address: string (physical address if registered_letter, else "")
+    - required_docs: list of strings (e.g. ["Customer ID", "Death Certificate"])
+    - has_mourning_portal: boolean (true if provider has a specific digital estate/mourning portal in Switzerland)
+    - mourning_portal_url: string (URL if has_mourning_portal is true, else "")
     """
     
     response = client.chat.completions.create(
@@ -62,7 +68,7 @@ def generate_cancellation_letter(provider_name: str, sub_type: str, person_name:
     - DO NOT include sender address, recipient address, or date headers.
     - Start directly with the Subject Line ("Betreff: ...").
     - Include formal greeting ("Sehr geehrte Damen und Herren,").
-    - If Mode is 'after_death', explicitly mention the contract holder has passed away and cite Swiss Code of Obligations (OR Art. 405).
+    - If Mode is 'after_death', explicitly mention contract termination due to death under Swiss Code of Obligations (OR Art. 405).
     - If Mode is 'during_life', state cancellation per notice terms.
     - End with "Mit freundlichen Grüssen,".
     - DO NOT add signature line placeholders at the end.

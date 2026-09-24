@@ -53,17 +53,27 @@ def generate_cancel_docs(data: CancelActionRequest):
         pdf_filename = f"Cancellation_{data.provider}_{data.contract_id}.pdf"
         pdf_path = os.path.join("backend", pdf_filename)
         
+        recipient_addr = policy_info.get("mailing_address") or "Kundenservice"
+        
         pdf_generator.create_cancellation_pdf(
             sender_name=data.person_name,
             provider_name=data.provider,
-            provider_address=policy_info.get("recipient_address", "Customer Support"),
+            provider_address=recipient_addr,
             letter_body=letter_text,
             output_path=pdf_path
         )
         
         return {
+            "primary_channel": policy_info.get("primary_channel", "registered_letter"),
+            "channel_instructions": policy_info.get("channel_instructions", []),
+            "action_details": {
+                "portal_url": policy_info.get("portal_url", ""),
+                "contact_email": policy_info.get("contact_email", ""),
+                "contact_phone": policy_info.get("contact_phone", ""),
+                "has_mourning_portal": policy_info.get("has_mourning_portal", False),
+                "mourning_portal_url": policy_info.get("mourning_portal_url", "")
+            },
             "letter_text": letter_text,
-            "direct_links": policy_info.get("direct_links", []),
             "pdf_filename": pdf_filename,
             "download_url": f"/api/download-pdf/{pdf_filename}"
         }
