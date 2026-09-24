@@ -3,9 +3,9 @@ import json
 from openai import OpenAI
 from duckduckgo_search import DDGS
 
-APERTUS_API_KEY = os.getenv("APERTUS_API_KEY", "your-apertus-api-key")
-APERTUS_BASE_URL = os.getenv("APERTUS_BASE_URL", "https://api.apertus.ai/v1")
-APERTUS_MODEL = os.getenv("APERTUS_MODEL", "apertus-70b-instruct")
+APERTUS_API_KEY = os.getenv("SWISSCOM_API_KEY", "your-swisscom-api-key")
+APERTUS_BASE_URL = os.getenv("APERTUS_BASE_URL", "https://api.swisscom.com/products/swiss-ai-weeks/apertus-1.5-70b/v1")
+APERTUS_MODEL = os.getenv("APERTUS_MODEL", "swiss-ai/Apertus-v1.5-70B")
 
 client = OpenAI(api_key=APERTUS_API_KEY, base_url=APERTUS_BASE_URL)
 
@@ -33,7 +33,7 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str, mode: str 
     Cancellation Context: {mode}
     Web Search Results: {json.dumps(results, ensure_ascii=False)}
     
-    Respond strictly in JSON format with these exact keys:
+    Respond strictly in valid JSON format with these exact keys:
     1. "notice_period": string summarizing notice period / deadline.
     2. "summary_bullets": list of 3-4 short, clear bullet points on how to cancel.
     3. "direct_links": list of strings (URLs found in search for user to visit directly).
@@ -50,7 +50,14 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str, mode: str 
         temperature=0.2
     )
 
-    return json.loads(response.choices[0].message.content)
+    content = response.choices[0].message.content
+    # Clean up markdown code blocks if present in LLM response
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0].strip()
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0].strip()
+
+    return json.loads(content)
 
 
 def generate_cancellation_letter(provider_name: str, sub_type: str, person_name: str, contract_id: str, mode: str, policy_info: dict) -> str:
