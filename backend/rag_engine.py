@@ -10,13 +10,13 @@ except ImportError:
 client = OpenAI(
     base_url="https://app.swisscom.ch/ai/api/v1",
     api_key=os.getenv("SWISSCOM_API_KEY", ""),
-    timeout=15.0
+    timeout=20.0
 )
 
 APERTUS_MODEL = "swiss-ai/Apertus-v1.5-70B"
 
 def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscription", mode: str = "during_life") -> dict:
-    query = f"{provider_name} {sub_type} Kündigung Schweiz Nachlass Todesfall" if mode == "after_death" else f"{provider_name} {sub_type} Kündigung Schweiz"
+    query = f"{provider_name} {sub_type} Kündigung Abo kündigen Schweiz" if mode != "after_death" else f"{provider_name} {sub_type} Kündigung Nachlass Todesfall"
     search_results = []
     
     try:
@@ -25,28 +25,30 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
             for r in results:
                 search_results.append(f"Title: {r['title']}\nSnippet: {r['body']}\nURL: {r['href']}")
     except Exception as e:
-        # Fallback snippet if DDGS times out or blocks rate
-        search_results.append(f"Snippet: Standard Swiss subscription cancellation for {provider_name}.")
+        search_results.append("Error fetching live web search results.")
 
     context_str = "\n\n".join(search_results)
     
-    system_prompt = "You determine the primary cancellation channel and extract structured information into valid JSON."
+    system_prompt = "You extract exact subscription cancellation instructions into valid JSON based on official web sources."
     user_prompt = f"""
     Context: {context_str}
     Provider: {provider_name}
+    Subscription Type: {sub_type}
     Mode: {mode}
     
+    CRITICAL: Analyze the context carefully. Check if cancellation is done online via a member portal, by email, or via letter.
+    
     Extract JSON with:
-    - notice_period: string (e.g. "3 months to month end")
+    - notice_period: string (e.g., "1 month before renewal date" or "Cancel anytime during contract term")
     - primary_channel: string MUST BE ONE OF ["web_portal", "email", "registered_letter", "app_store", "phone_call"]
-    - channel_instructions: list of clear, short step-by-step strings for the user
-    - portal_url: string (direct URL if web_portal or app_store, else "")
-    - contact_email: string (support email if email, else "")
-    - contact_phone: string (phone number if phone_call, else "")
-    - mailing_address: string (physical address if registered_letter, else "")
-    - required_docs: list of strings (e.g. ["Customer ID", "Death Certificate"])
-    - has_mourning_portal: boolean (true if provider has a specific digital estate/mourning portal in Switzerland)
-    - mourning_portal_url: string (URL if has_mourning_portal is true, else "")
+    - channel_instructions: list of precise step-by-step instructions based strictly on policy context
+    - portal_url: string (direct link to customer login/portal if web_portal, else "")
+    - contact_email: string (support email if email option exists, else "")
+    - contact_phone: string (phone number if applicable, else "")
+    - mailing_address: string (physical address if letter required, else "")
+    - required_docs: list of strings
+    - has_mourning_portal: boolean
+    - mourning_portal_url: string
     """
     
     try:
@@ -61,20 +63,15 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
-        # Fallback structured plan if API connection drops
         return {
-            "notice_period": "In der Regel 1 bis 3 Monate per Ende der Vertragslaufzeit.",
-            "primary_channel": "registered_letter",
-            "channel_instructions": [
-                f"Kündigung schriftlich an {provider_name} verfassen.",
-                "Per Einschreiben oder offizieller E-Mail senden.",
-                "Bestätigung aufbewahren."
-            ],
+            "notice_period": "Unable to fetch live policy. Please check internet connection.",
+            "primary_channel": "email",
+            "channel_instructions": ["Live search timeout. Retry request."],
             "portal_url": "",
             "contact_email": "",
             "contact_phone": "",
-            "mailing_address": f"{provider_name}, Kundendienst, Schweiz",
-            "required_docs": ["Vertragsnummer", "Personalien"],
+            "mailing_address": "",
+            "required_docs": [],
             "has_mourning_portal": False,
             "mourning_portal_url": ""
         }
@@ -101,16 +98,12 @@ def generate_cancellation_letter(provider_name: str, sub_type: str, person_name:
     - DO NOT add signature line placeholders at the end.
     """
 
-    try:
-        response = client.chat.completions.create(
-            model=APERTUS_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        # Static fallback letter text if Apertus LLM endpoint is unreachable
-        return f"Betreff: Kündigung meiner Mitgliedschaft bei {provider_name} - Vertragsnummer {contract_id}\n\nSehr geehrte Damen und Herren,\n\nhiermit kündige ich meinen Vertrag ({contract_id}) bei {provider_name} fristgerecht zum nächstmöglichen Zeitpunkt.\n\nBitte bestätigen Sie mir den Erhalt dieser Kündigung sowie das Vertragsende schriftlich.\n\nMit freundlichen Grüssen,\n{person_name}"
+    response = client.chat.completions.create(
+        model=APERTUS_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.1
+    )
+    return response.choices[0].message.content
