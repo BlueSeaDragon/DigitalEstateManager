@@ -126,12 +126,129 @@ def test_owner_cancellation_and_type_specific_dict():
     assert sub.status == "Cancelled"
 
 
+def test_owner_removal_and_wrongly_attributed_audit():
+    assets = get_default_assets()
+    initial_metrics = calculate_metrics(assets)
+    initial_spend = float(initial_metrics["active_monthly_spend"].replace("$", ""))
+    initial_total = initial_metrics["total_services"]
+
+    # 1. Owner removes an account
+    target = assets[0]
+    sub_cost = target.cost_monthly
+    target.status = "Removed"
+
+    metrics_after_remove = calculate_metrics(assets)
+    new_spend = float(metrics_after_remove["active_monthly_spend"].replace("$", ""))
+    assert metrics_after_remove["removed_count"] == 1
+    assert round(new_spend, 2) == round(initial_spend - sub_cost, 2)
+    assert metrics_after_remove["total_services"] == initial_total - 1
+
+    # 2. Owner restores the account
+    target.status = "Active"
+    metrics_after_restore = calculate_metrics(assets)
+    assert metrics_after_restore["removed_count"] == 0
+    assert float(metrics_after_restore["active_monthly_spend"].replace("$", "")) == initial_spend
+
+    # 3. Heir/Executor flags an account as Wrongly Attributed (never deleted)
+    fin_asset = assets[2]
+    fin_asset.status = "Wrongly Attributed"
+    metrics_after_wrong = calculate_metrics(assets)
+    assert metrics_after_wrong["wrongly_attributed_count"] == 1
+    # Remains in total estate records
+    assert len(assets) == 5
+
+    # 4. Table serialization preserves these statuses
+    row_removed = target.to_table_row()
+    row_removed["Status"] = "Removed"
+    rebuilt_rem = Asset.from_table_row(row_removed)
+    assert rebuilt_rem.status == "Removed"
+
+    row_wrong = fin_asset.to_table_row()
+    rebuilt_wrong = Asset.from_table_row(row_wrong)
+    assert rebuilt_wrong.status == "Wrongly Attributed"
+
+
+def test_multi_type_assets():
+    death_pol, cancel_pol = get_policies_for_service("Google One", "https://one.google.com")
+    multi_asset = Asset(
+        service="Google One",
+        service_address="https://one.google.com",
+        username="alex.backup@gmail.com",
+        death_policy=death_pol,
+        cancel_policy=cancel_pol,
+        asset_infos=[
+            CloudStorageAssetInfo(
+                storage_capacity_gb=200.0,
+                used_storage_gb=85.0,
+                contains_sensitive_data=True,
+                data_types=["Photos", "Tax Returns"],
+            ),
+            SubscriptionAssetInfo(
+                cost_monthly=2.99,
+                plan_tier="200 GB Plan",
+                billing_cycle="monthly",
+                renewal_date="2026-10-15",
+            ),
+        ],
+        heir="Jordan",
+        status="Active",
+    )
+
+    # 1. Multi-type identification
+    assert len(multi_asset.types) == 2
+    assert "Cloud Storage" in multi_asset.types
+    assert "Subscription" in multi_asset.types
+    assert multi_asset.has_type("Cloud Storage")
+    assert multi_asset.has_type("Subscription")
+    assert not multi_asset.has_type("Crypto / Finance")
+    assert "Cloud Storage, Subscription" in multi_asset.category
+
+    # 2. Get info by type
+    cloud_info = multi_asset.get_info("Cloud Storage")
+    sub_info = multi_asset.get_info("Subscription")
+    assert isinstance(cloud_info, CloudStorageAssetInfo)
+    assert cloud_info.storage_capacity_gb == 200.0
+    assert isinstance(sub_info, SubscriptionAssetInfo)
+    assert sub_info.cost_monthly == 2.99
+
+    # 3. Cost aggregation
+    assert multi_asset.cost_monthly == 2.99
+    assert multi_asset.cost_display == "$2.99/mo"
+
+    # 4. Tailored type-specific dict representations
+    sub_dict = multi_asset.to_type_specific_dict(target_type="Subscription")
+    assert "Plan" in sub_dict
+    assert sub_dict["Plan"] == "200 GB Plan"
+    assert "Monthly Cost" in sub_dict
+
+    cloud_dict = multi_asset.to_type_specific_dict(target_type="Cloud Storage")
+    assert "Capacity" in cloud_dict
+    assert cloud_dict["Capacity"] == "200 GB"
+    assert cloud_dict["Used"] == "85.0 GB"
+
+    # 5. Adding another type dynamically (e.g. Social Media presence)
+    multi_asset.add_type_info(SocialMediaAssetInfo(platform_handle="@alex_google"))
+    assert multi_asset.has_type("Social Media")
+    assert len(multi_asset.types) == 3
+
+    # 6. Table serialization with multiple types
+    t_row = multi_asset.to_table_row()
+    assert "Cloud Storage" in t_row["Type"]
+    assert "Subscription" in t_row["Type"]
+
+    rebuilt = Asset.from_table_row(t_row)
+    assert rebuilt.has_type("Cloud Storage")
+    assert rebuilt.has_type("Subscription")
+
+
 if __name__ == "__main__":
     test_asset_info_polymorphism()
     test_cancel_policy_execution()
     test_asset_creation_and_table_serialization()
     test_default_assets_and_metrics()
     test_owner_cancellation_and_type_specific_dict()
+    test_owner_removal_and_wrongly_attributed_audit()
+    test_multi_type_assets()
     print("ALL TESTS PASSED SUCCESSFULLY!")
 
 

@@ -61,15 +61,24 @@ def get_default_assets() -> List[Asset]:
             username="jordan.backup@gmail.com",
             death_policy=g_death,
             cancel_policy=g_cancel,
-            asset_info=CloudStorageAssetInfo(
-                storage_capacity_gb=100.0,
-                used_storage_gb=42.3,
-                contains_sensitive_data=True,
-                data_types=["Tax Documents", "Family Photos", "Legal Contracts"],
-            ),
+            asset_infos=[
+                CloudStorageAssetInfo(
+                    storage_capacity_gb=100.0,
+                    used_storage_gb=42.3,
+                    contains_sensitive_data=True,
+                    data_types=["Tax Documents", "Family Photos", "Legal Contracts"],
+                ),
+                SubscriptionAssetInfo(
+                    cost_monthly=1.99,
+                    plan_tier="Google One 100 GB Plan",
+                    billing_cycle="monthly",
+                    renewal_date="2026-10-12",
+                    payment_method_hint="Google Pay (Mastercard ending 9811)",
+                ),
+            ],
             heir="Jordan",
             status="Active",
-            notes="100GB Google One storage plan",
+            notes="100GB Google One storage plan & active recurring subscription",
         ),
         Asset(
             service="Coinbase",
@@ -77,16 +86,25 @@ def get_default_assets() -> List[Asset]:
             username="alex.crypto@gmail.com",
             death_policy=cb_death,
             cancel_policy=cb_cancel,
-            asset_info=FinancialAssetInfo(
-                institution_type="crypto_exchange",
-                approximate_balance=12450.00,
-                is_custodial=True,
-                requires_probate=True,
-                account_number_hint="Vault-ETH/BTC",
-            ),
+            asset_infos=[
+                FinancialAssetInfo(
+                    institution_type="crypto_exchange",
+                    approximate_balance=12450.00,
+                    is_custodial=True,
+                    requires_probate=True,
+                    account_number_hint="Vault-ETH/BTC",
+                ),
+                SubscriptionAssetInfo(
+                    cost_monthly=29.99,
+                    plan_tier="Coinbase One (Zero-Fee Trading)",
+                    billing_cycle="monthly",
+                    renewal_date="2026-10-20",
+                    payment_method_hint="Visa ending 4242",
+                ),
+            ],
             heir="Alex",
             status="Active",
-            notes="Hardware 2FA active on personal device",
+            notes="Crypto exchange wallet with active Coinbase One membership",
         ),
         Asset(
             service="LinkedIn",
@@ -109,25 +127,39 @@ def get_default_assets() -> List[Asset]:
                     "Choose whether to memorialize or delete the account",
                 ],
             ),
-            asset_info=SocialMediaAssetInfo(
-                profile_url="https://linkedin.com/in/alex-legacy",
-                platform_handle="alex-legacy",
-                memorialization_supported=True,
-                has_legacy_contact_set=False,
-            ),
+            asset_infos=[
+                SocialMediaAssetInfo(
+                    profile_url="https://linkedin.com/in/alex-legacy",
+                    platform_handle="alex-legacy",
+                    memorialization_supported=True,
+                    has_legacy_contact_set=False,
+                ),
+                SubscriptionAssetInfo(
+                    cost_monthly=39.99,
+                    plan_tier="Premium Career",
+                    billing_cycle="monthly",
+                    renewal_date="2026-11-01",
+                    payment_method_hint="American Express ending 1002",
+                ),
+            ],
             heir="Jordan",
             status="Active",
-            notes="Professional profile and contact network",
+            notes="Professional profile and active Premium Career subscription",
         ),
     ]
 
 
 def calculate_metrics(assets: List[Asset]) -> Dict[str, Any]:
     """Computes estate overview statistics."""
-    total_services = len(assets)
-    unique_providers = len({f"{a.service.lower()}|{a.service_address.lower()}" for a in assets})
-    active_services = [a for a in assets if a.status != "Cancelled"]
+    # Active accounts (excluding cancelled, removed, and wrongly attributed)
+    active_services = [a for a in assets if a.status not in ["Cancelled", "Removed", "Wrongly Attributed"]]
     cancelled_services = [a for a in assets if a.status == "Cancelled"]
+    removed_services = [a for a in assets if a.status == "Removed"]
+    wrongly_attributed_services = [a for a in assets if a.status == "Wrongly Attributed"]
+
+    valid_estate_assets = [a for a in assets if a.status != "Removed"]
+    total_services = len(valid_estate_assets)
+    unique_providers = len({f"{a.service.lower()}|{a.service_address.lower()}" for a in valid_estate_assets})
 
     # Active monthly recurring drain
     active_monthly_spend = sum(
@@ -135,15 +167,15 @@ def calculate_metrics(assets: List[Asset]) -> Dict[str, Any]:
         if a.cost_monthly
     )
 
-    # Monthly drain prevented (cancelled items or flagged for cancellation)
+    # Monthly drain prevented (cancelled items or flagged for cancellation, excluding removed)
     drain_prevented = sum(
-        a.cost_monthly for a in assets
+        a.cost_monthly for a in valid_estate_assets
         if a.cost_monthly and (a.status == "Cancelled" or "cancel" in a.cancel_policy.action_name.lower())
     )
 
     critical_recoveries = [
-        a for a in assets
-        if isinstance(a.asset_info, FinancialAssetInfo)
+        a for a in valid_estate_assets
+        if a.has_type("Crypto / Finance")
         or a.death_policy.requires_probate
         or a.cancel_policy.action_type == "probate_recovery"
     ]
@@ -153,6 +185,8 @@ def calculate_metrics(assets: List[Asset]) -> Dict[str, Any]:
         "unique_providers": unique_providers,
         "active_count": len(active_services),
         "cancelled_count": len(cancelled_services),
+        "removed_count": len(removed_services),
+        "wrongly_attributed_count": len(wrongly_attributed_services),
         "active_monthly_spend": f"${active_monthly_spend:.2f}",
         "monthly_drain_prevented": f"${drain_prevented:.2f}" if drain_prevented > 0 else "$0.00",
         "critical_recovery_count": len(critical_recoveries),

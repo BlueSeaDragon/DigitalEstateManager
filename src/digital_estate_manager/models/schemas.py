@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # =============================================================================
@@ -18,6 +18,10 @@ class AssetInfo(BaseModel):
     """
     asset_type: str = Field(default="generic", description="Discriminator for the asset type")
     notes: Optional[str] = Field(default=None, description="General context or metadata")
+
+    def get_type_name(self) -> str:
+        """Returns standard category name."""
+        return "Other"
 
     def display_details(self) -> Dict[str, Any]:
         """Returns human-readable key-value pairs representing the asset information for display."""
@@ -44,6 +48,9 @@ class SubscriptionAssetInfo(AssetInfo):
     auto_renew: bool = Field(default=True, description="Whether auto-renewal is enabled")
     renewal_date: Optional[str] = Field(default=None, description="Next billing / renewal date")
     payment_method_hint: Optional[str] = Field(default=None, description="e.g. Visa ending 4242 or PayPal")
+
+    def get_type_name(self) -> str:
+        return "Subscription"
 
     def get_monthly_cost(self) -> Optional[float]:
         return self.cost_monthly
@@ -81,6 +88,9 @@ class FinancialAssetInfo(AssetInfo):
     is_custodial: bool = Field(default=True, description="Whether assets are held by a custodian or self-custodied")
     requires_probate: bool = Field(default=True, description="Whether court letters of administration are required")
 
+    def get_type_name(self) -> str:
+        return "Crypto / Finance"
+
     def get_cost_display(self) -> str:
         if self.approximate_balance is not None:
             symbol = "$" if self.currency == "USD" else f"{self.currency} "
@@ -112,6 +122,9 @@ class CloudStorageAssetInfo(AssetInfo):
         description="Types of digital content stored",
     )
 
+    def get_type_name(self) -> str:
+        return "Cloud Storage"
+
     def display_details(self) -> Dict[str, Any]:
         details = {
             "Asset Type": "Cloud Storage",
@@ -132,6 +145,9 @@ class SocialMediaAssetInfo(AssetInfo):
     has_legacy_contact_set: bool = Field(default=False, description="Whether account holder designated a legacy contact")
     memorialization_supported: bool = Field(default=True, description="Whether platform supports memorialization")
 
+    def get_type_name(self) -> str:
+        return "Social Media"
+
     def display_details(self) -> Dict[str, Any]:
         details = {
             "Asset Type": "Social Media / Online Profile",
@@ -148,6 +164,9 @@ class GenericAssetInfo(AssetInfo):
     asset_type: Literal["generic"] = "generic"
     category_name: str = Field(default="Other", description="General category label")
     custom_properties: Dict[str, Any] = Field(default_factory=dict, description="Arbitrary custom properties")
+
+    def get_type_name(self) -> str:
+        return self.category_name or "Other"
 
     def display_details(self) -> Dict[str, Any]:
         details = {"Asset Type": self.category_name}
@@ -353,11 +372,13 @@ AssetStatus = Literal[
     "Completed",
     "Cancelled",
     "Archived",
+    "Removed",
+    "Wrongly Attributed",
 ]
 
 
 class Asset(BaseModel):
-    """Represents a discovered or cataloged digital asset."""
+    """Represents a discovered or cataloged digital asset supporting one or more types."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
     service: str = Field(..., description="Name of the service (e.g. Spotify, Google Drive, Coinbase)")
     service_address: str = Field(
@@ -376,9 +397,13 @@ class Asset(BaseModel):
         ...,
         description="Actionable policy for canceling, transferring, or resolving this asset",
     )
-    asset_info: AnyAssetInfo = Field(
-        default_factory=GenericAssetInfo,
-        description="Type-specific asset metadata (e.g. Subscription, Financial, CloudStorage)",
+    asset_info: Optional[AnyAssetInfo] = Field(
+        default=None,
+        description="Primary type-specific asset metadata (maintained for backward compatibility)",
+    )
+    asset_infos: List[AnyAssetInfo] = Field(
+        default_factory=list,
+        description="List of type-specific asset metadata models supporting multiple categories",
     )
 
     # Lifecycle & Ownership
@@ -389,6 +414,115 @@ class Asset(BaseModel):
         default=True,
         description="Whether the owner has checked this asset themselves (False for automatically discovered assets)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_asset_infos_before(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            infos = list(data.get("asset_infos") or [])
+            single = data.get("asset_info")
+            if single is not None and single not in infos:
+                infos.insert(0, single)
+            elif infos and single is None:
+                single = infos[0]
+            elif not infos and single is None:
+                single = GenericAssetInfo()
+                infos = [single]
+            data["asset_infos"] = infos
+            data["asset_info"] = single
+        return data
+
+    @model_validator(mode="after")
+    def sync_asset_infos_after(self) -> "Asset":
+        if not self.asset_infos and self.asset_info:
+            self.asset_infos = [self.asset_info]
+        elif self.asset_infos and not self.asset_info:
+            self.asset_info = self.asset_infos[0]
+        elif not self.asset_infos and not self.asset_info:
+            gen = GenericAssetInfo()
+            self.asset_infos = [gen]
+            self.asset_info = gen
+        elif self.asset_info and self.asset_info not in self.asset_infos:
+            self.asset_infos.insert(0, self.asset_info)
+        return self
+
+    # --- Multi-Type Helpers ---
+    @property
+    def types(self) -> List[str]:
+        """List of all category/type names associated with this asset."""
+        seen = set()
+        res = []
+        for info in self.asset_infos:
+            t = info.get_type_name()
+            if t not in seen:
+                seen.add(t)
+                res.append(t)
+        return res or ["Other"]
+
+    def has_type(self, type_identifier: Any) -> bool:
+        """Checks if the asset has a specific category type.
+
+        Accepts type name (e.g. 'Subscription', 'Cloud Storage', 'Crypto / Finance',
+        'Social Media', 'Other') or class (e.g. SubscriptionAssetInfo).
+        """
+        if isinstance(type_identifier, type):
+            return any(isinstance(info, type_identifier) for info in self.asset_infos)
+
+        if not isinstance(type_identifier, str):
+            return False
+
+        t_clean = type_identifier.lower().strip()
+        for t in self.types:
+            if t_clean == t.lower().strip():
+                return True
+            if t_clean in ["crypto", "finance", "crypto / finance", "financial"] and t == "Crypto / Finance":
+                return True
+            if t_clean in ["cloud", "cloud storage", "storage"] and t == "Cloud Storage":
+                return True
+            if t_clean in ["social", "social media"] and t == "Social Media":
+                return True
+            if t_clean in ["sub", "subscription", "membership"] and t == "Subscription":
+                return True
+        return False
+
+    def get_info(self, type_identifier: Any) -> Optional[AnyAssetInfo]:
+        """Returns the specific AssetInfo model instance matching the requested type, or None."""
+        if isinstance(type_identifier, type):
+            for info in self.asset_infos:
+                if isinstance(info, type_identifier):
+                    return info
+            return None
+
+        if not isinstance(type_identifier, str):
+            return None
+
+        t_clean = type_identifier.lower().strip()
+        for info in self.asset_infos:
+            t = info.get_type_name()
+            if t_clean == t.lower().strip():
+                return info
+            if t_clean in ["crypto", "finance", "crypto / finance", "financial"] and t == "Crypto / Finance":
+                return info
+            if t_clean in ["cloud", "cloud storage", "storage"] and t == "Cloud Storage":
+                return info
+            if t_clean in ["social", "social media"] and t == "Social Media":
+                return info
+            if t_clean in ["sub", "subscription", "membership"] and t == "Subscription":
+                return info
+        return None
+
+    def add_type_info(self, new_info: AnyAssetInfo) -> None:
+        """Adds or updates a type-specific metadata model on this asset."""
+        type_name = new_info.get_type_name()
+        for i, info in enumerate(self.asset_infos):
+            if info.get_type_name() == type_name:
+                self.asset_infos[i] = new_info
+                if i == 0:
+                    self.asset_info = new_info
+                return
+        self.asset_infos.append(new_info)
+        if not self.asset_info:
+            self.asset_info = self.asset_infos[0]
 
     # --- Backward-compatibility and convenience aliases ---
     @property
@@ -412,28 +546,41 @@ class Asset(BaseModel):
 
     @property
     def category(self) -> str:
-        """Display category name derived from asset_info."""
-        if isinstance(self.asset_info, SubscriptionAssetInfo):
-            return "Subscription"
-        elif isinstance(self.asset_info, FinancialAssetInfo):
-            return "Crypto / Finance"
-        elif isinstance(self.asset_info, CloudStorageAssetInfo):
-            return "Cloud Storage"
-        elif isinstance(self.asset_info, SocialMediaAssetInfo):
-            return "Social Media"
-        elif isinstance(self.asset_info, GenericAssetInfo):
-            return self.asset_info.category_name
-        return "Other"
+        """Display category string. If multiple types, joins them with commas."""
+        types_list = self.types
+        if not types_list:
+            return "Other"
+        return ", ".join(types_list)
 
     @property
     def cost_monthly(self) -> Optional[float]:
-        """Monthly cost extracted from asset_info."""
-        return self.asset_info.get_monthly_cost()
+        """Total monthly recurring cost extracted from any subscription types."""
+        costs = [info.get_monthly_cost() for info in self.asset_infos if info.get_monthly_cost() is not None]
+        return sum(costs) if costs else None
 
     @property
     def cost_display(self) -> str:
-        """Cost display string extracted from asset_info."""
-        return self.asset_info.get_cost_display()
+        """Smart cost/value display across multiple types."""
+        fin_info = self.get_info("Crypto / Finance")
+        sub_info = self.get_info("Subscription")
+
+        if fin_info and sub_info:
+            fin_disp = fin_info.get_cost_display()
+            sub_disp = sub_info.get_cost_display()
+            if fin_disp != "N/A" and sub_disp != "$0.00/mo":
+                return f"{fin_disp} (+{sub_disp})"
+            elif fin_disp != "N/A":
+                return fin_disp
+            return sub_disp
+
+        for info in self.asset_infos:
+            disp = info.get_cost_display()
+            if disp and disp != "N/A" and disp != "$0.00/mo":
+                return disp
+
+        if self.asset_info:
+            return self.asset_info.get_cost_display()
+        return "N/A"
 
     @property
     def action(self) -> str:
@@ -449,9 +596,23 @@ class Asset(BaseModel):
             f"{self.username.lower().strip()}"
         )
 
+    def display_details(self) -> Dict[str, Any]:
+        """Aggregates all known details across all types for this asset."""
+        merged: Dict[str, Any] = {}
+        if len(self.asset_infos) <= 1:
+            for info in self.asset_infos:
+                merged.update(info.display_details())
+            return merged
+
+        for info in self.asset_infos:
+            prefix = info.get_type_name()
+            for k, v in info.display_details().items():
+                merged[f"[{prefix}] {k}"] = v
+        return merged
+
     @classmethod
     def from_table_row(cls, row: Dict[str, Any]) -> "Asset":
-        """Converts a dictionary from st.data_editor into a typed Asset instance."""
+        """Converts a dictionary from st.data_editor into a typed Asset instance supporting multiple types."""
         service = str(row.get("Service", "")).strip()
         service_address = str(
             row.get("Service Address")
@@ -464,7 +625,7 @@ class Asset(BaseModel):
             or row.get("Account Address")
             or row.get("username", "")
         ).strip()
-        category = str(row.get("Type", "Other")).strip()
+        category_raw = str(row.get("Type", row.get("Types", "Other"))).strip()
         cost_raw = str(row.get("Cost", "N/A")).strip()
         heir = str(row.get("Heir", "Unassigned")).strip()
         action_name = str(row.get("Action", "Cancel")).strip()
@@ -480,17 +641,23 @@ class Asset(BaseModel):
             except ValueError:
                 cost_monthly = None
 
-        # Build asset_info
-        if "subscription" in category.lower():
-            info: AnyAssetInfo = SubscriptionAssetInfo(cost_monthly=cost_monthly or 0.0)
-        elif "crypto" in category.lower() or "finance" in category.lower():
-            info = FinancialAssetInfo(approximate_balance=cost_monthly)
-        elif "cloud" in category.lower() or "storage" in category.lower():
-            info = CloudStorageAssetInfo()
-        elif "social" in category.lower():
-            info = SocialMediaAssetInfo()
-        else:
-            info = GenericAssetInfo(category_name=category)
+        category_parts = [p.strip() for p in category_raw.split(",") if p.strip()]
+        if not category_parts:
+            category_parts = [category_raw]
+
+        infos: List[AnyAssetInfo] = []
+        for cat in category_parts:
+            cat_l = cat.lower()
+            if "subscription" in cat_l:
+                infos.append(SubscriptionAssetInfo(cost_monthly=cost_monthly or 0.0))
+            elif "crypto" in cat_l or "finance" in cat_l:
+                infos.append(FinancialAssetInfo(approximate_balance=cost_monthly))
+            elif "cloud" in cat_l or "storage" in cat_l:
+                infos.append(CloudStorageAssetInfo())
+            elif "social" in cat_l:
+                infos.append(SocialMediaAssetInfo())
+            else:
+                infos.append(GenericAssetInfo(category_name=cat))
 
         # Build death_policy
         death_policy = DeathPolicy(
@@ -519,9 +686,9 @@ class Asset(BaseModel):
             username=username,
             death_policy=death_policy,
             cancel_policy=cancel_policy,
-            asset_info=info,
+            asset_infos=infos,
             heir=heir,
-            status=status if status in ["Active", "Pending Review", "In Progress", "Completed", "Archived"] else "Active",
+            status=status if status in ["Active", "Pending Review", "In Progress", "Completed", "Cancelled", "Archived", "Removed", "Wrongly Attributed"] else "Active",
             notes=str(row.get("Notes", "")) if "Notes" in row else None,
         )
 
@@ -538,49 +705,58 @@ class Asset(BaseModel):
             "Status": self.status,
         }
 
-    def to_type_specific_dict(self) -> Dict[str, Any]:
-        """Returns a tailored dictionary with column names specific to its asset type."""
+    def to_type_specific_dict(self, target_type: Optional[str] = None) -> Dict[str, Any]:
+        """Returns a tailored dictionary with column names specific to its asset type(s)."""
         base = {
             "Service": self.service,
             "Service Address": self.service_address,
             "Username": self.username,
+            "Types": self.category,
             "Status": self.status,
             "Heir": self.heir,
         }
-        if isinstance(self.asset_info, SubscriptionAssetInfo):
+
+        chosen_info = None
+        if target_type:
+            chosen_info = self.get_info(target_type)
+
+        if not chosen_info:
+            chosen_info = self.asset_info
+
+        if isinstance(chosen_info, SubscriptionAssetInfo):
             base.update({
-                "Plan": self.asset_info.plan_tier or "Standard",
-                "Monthly Cost": self.cost_display,
-                "Billing Cycle": self.asset_info.billing_cycle.capitalize(),
-                "Renewal Date": self.asset_info.renewal_date or "N/A",
-                "Payment Method": self.asset_info.payment_method_hint or "N/A",
+                "Plan": chosen_info.plan_tier or "Standard",
+                "Monthly Cost": chosen_info.get_cost_display(),
+                "Billing Cycle": chosen_info.billing_cycle.capitalize(),
+                "Renewal Date": chosen_info.renewal_date or "N/A",
+                "Payment Method": chosen_info.payment_method_hint or "N/A",
             })
-        elif isinstance(self.asset_info, FinancialAssetInfo):
+        elif isinstance(chosen_info, FinancialAssetInfo):
             base.update({
-                "Institution": self.asset_info.institution_type.replace("_", " ").title(),
-                "Approx. Value": self.cost_display,
-                "Custodial": "Custodial" if self.asset_info.is_custodial else "Self-Custody",
-                "Probate Required": "Yes" if self.asset_info.requires_probate else "No",
-                "Account Hint": self.asset_info.account_number_hint or "N/A",
+                "Institution": chosen_info.institution_type.replace("_", " ").title(),
+                "Approx. Value": chosen_info.get_cost_display(),
+                "Custodial": "Custodial" if chosen_info.is_custodial else "Self-Custody",
+                "Probate Required": "Yes" if chosen_info.requires_probate else "No",
+                "Account Hint": chosen_info.account_number_hint or "N/A",
             })
-        elif isinstance(self.asset_info, CloudStorageAssetInfo):
-            cap = f"{self.asset_info.storage_capacity_gb:.0f} GB" if self.asset_info.storage_capacity_gb else "Unknown"
-            used = f"{self.asset_info.used_storage_gb:.1f} GB" if self.asset_info.used_storage_gb is not None else "N/A"
+        elif isinstance(chosen_info, CloudStorageAssetInfo):
+            cap = f"{chosen_info.storage_capacity_gb:.0f} GB" if chosen_info.storage_capacity_gb else "Unknown"
+            used = f"{chosen_info.used_storage_gb:.1f} GB" if chosen_info.used_storage_gb is not None else "N/A"
             base.update({
                 "Capacity": cap,
                 "Used": used,
-                "Data Types": ", ".join(self.asset_info.data_types) if self.asset_info.data_types else "Files",
-                "Sensitive Data": "Yes" if self.asset_info.contains_sensitive_data else "No",
+                "Data Types": ", ".join(chosen_info.data_types) if chosen_info.data_types else "Files",
+                "Sensitive Data": "Yes" if chosen_info.contains_sensitive_data else "No",
             })
-        elif isinstance(self.asset_info, SocialMediaAssetInfo):
+        elif isinstance(chosen_info, SocialMediaAssetInfo):
             base.update({
-                "Profile URL": self.asset_info.profile_url or self.service_address or "N/A",
+                "Profile URL": chosen_info.profile_url or self.service_address or "N/A",
                 "Handle": self.username,
-                "Memorialization": "Supported" if self.asset_info.memorialization_supported else "No",
-                "Legacy Contact": "Configured" if self.asset_info.has_legacy_contact_set else "Not Set",
+                "Memorialization": "Supported" if chosen_info.memorialization_supported else "No",
+                "Legacy Contact": "Configured" if chosen_info.has_legacy_contact_set else "Not Set",
             })
-        else:
-            base.update(self.asset_info.display_details())
+        elif chosen_info:
+            base.update(chosen_info.display_details())
 
         return base
 
