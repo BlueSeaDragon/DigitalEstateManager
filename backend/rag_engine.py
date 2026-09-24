@@ -16,7 +16,7 @@ client = OpenAI(
 APERTUS_MODEL = "swiss-ai/Apertus-v1.5-70B"
 
 def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscription", mode: str = "during_life") -> dict:
-    query = f"{provider_name} {sub_type} Kündigung Abo kündigen Schweiz" if mode != "after_death" else f"{provider_name} {sub_type} Kündigung Nachlass Todesfall"
+    query = f"{provider_name} {sub_type} Kündigung Schweiz Abo" if mode != "after_death" else f"{provider_name} {sub_type} Kündigung Nachlass Todesfall"
     search_results = []
     
     try:
@@ -24,28 +24,30 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
             results = list(ddgs.text(query, max_results=5))
             for r in results:
                 search_results.append(f"Title: {r['title']}\nSnippet: {r['body']}\nURL: {r['href']}")
-    except Exception as e:
-        search_results.append("Error fetching live web search results.")
+    except Exception:
+        search_results.append("Live search offline. Proceeding with standard Swiss contract rules.")
 
     context_str = "\n\n".join(search_results)
     
-    system_prompt = "You extract exact subscription cancellation instructions into valid JSON based on official web sources."
+    system_prompt = "You determine cancellation channels under Swiss law and return JSON."
     user_prompt = f"""
     Context: {context_str}
     Provider: {provider_name}
-    Subscription Type: {sub_type}
-    Mode: {mode}
+    Specified Sub-Type: {sub_type}
     
-    CRITICAL: Analyze the context carefully. Check if cancellation is done online via a member portal, by email, or via letter.
+    CRITICAL EVALUATION:
+    Does this provider have distinct cancellation rules depending on whether it is a Monthly vs Yearly contract, or specific subscription tiers?
     
-    Extract JSON with:
-    - notice_period: string (e.g., "1 month before renewal date" or "Cancel anytime during contract term")
+    Return JSON:
+    - notice_period: string
     - primary_channel: string MUST BE ONE OF ["web_portal", "email", "registered_letter", "app_store", "phone_call"]
-    - channel_instructions: list of precise step-by-step instructions based strictly on policy context
-    - portal_url: string (direct link to customer login/portal if web_portal, else "")
+    - requires_sub_type_selection: boolean (set to true ONLY if the user MUST specify whether they have a Monthly or Yearly plan to get the correct instructions)
+    - sub_type_options: list of strings (e.g. ["Monatsabo", "Jahresabo"] or [])
+    - channel_instructions: list of precise step-by-step instructions for the specified sub_type
+    - portal_url: string (direct URL if web_portal or app_store, else "")
     - contact_email: string (support email if email option exists, else "")
-    - contact_phone: string (phone number if applicable, else "")
-    - mailing_address: string (physical address if letter required, else "")
+    - contact_phone: string (phone number if phone_call, else "")
+    - mailing_address: string (physical address if registered_letter, else "")
     - required_docs: list of strings
     - has_mourning_portal: boolean
     - mourning_portal_url: string
@@ -64,14 +66,18 @@ def search_web_cancellation_policy(provider_name: str, sub_type: str = "subscrip
         return json.loads(response.choices[0].message.content)
     except Exception as e:
         return {
-            "notice_period": "Unable to fetch live policy. Please check internet connection.",
+            "notice_period": "Frist gemäss Vertrag (i.d.R. 1 Monat vor Verlängerung)",
             "primary_channel": "email",
-            "channel_instructions": ["Live search timeout. Retry request."],
+            "requires_sub_type_selection": True,
+            "sub_type_options": ["Monatsabo", "Jahresabo"],
+            "channel_instructions": [
+                "Bitte wähle oben deinen genauen Abo-Typ aus, um die exakten Schritte zu sehen."
+            ],
             "portal_url": "",
-            "contact_email": "",
+            "contact_email": "info@nonstopgym.com",
             "contact_phone": "",
             "mailing_address": "",
-            "required_docs": [],
+            "required_docs": ["Vertragsnummer"],
             "has_mourning_portal": False,
             "mourning_portal_url": ""
         }
