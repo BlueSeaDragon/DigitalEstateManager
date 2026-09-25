@@ -94,8 +94,15 @@ def _validator(ids: set[str]):
     return validate
 
 
-def interpret(candidates: list[Candidate], llm: LLMClient) -> bool:
-    """Mutate candidates with the LLM's judgement. Returns False on fallback to rules only."""
+def interpret(candidates: list[Candidate], llm: LLMClient, batch_size: int = 15) -> bool:
+    """Mutate candidates with the LLM's judgement. Returns False if any batch fell back to rules only."""
+    ok = True
+    for start in range(0, len(candidates), batch_size):
+        ok = _interpret_batch(candidates[start : start + batch_size], llm) and ok
+    return ok
+
+
+def _interpret_batch(candidates: list[Candidate], llm: LLMClient) -> bool:
     if not candidates:
         return True
     ids = {f"c{i}": c for i, c in enumerate(candidates, start=1)}

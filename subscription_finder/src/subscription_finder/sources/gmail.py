@@ -19,8 +19,22 @@ BILLING_TERMS = (
 )
 
 
-def build_query(months: int = 24) -> str:
-    return f"newer_than:{months}m ({BILLING_TERMS}) -in:spam"
+# Regex twin of BILLING_TERMS: in a footprint scan (broader query) only these emails get the
+# per-email billing extraction, so the subscription finder sees the same emails as before.
+BILLING_PATTERN = re.compile(
+    r"\b(receipts?|invoices?|subscriptions?|renewals?|your plan|abo|rechnung(en)?|quittung(en)?|factures?)\b", re.I
+)
+# Wording of emails that show an account exists: security/login, sign-up, statements, contracts, orders.
+FOOTPRINT_TERMS = BILLING_TERMS + (
+    ' OR "sign-in" OR "sign in" OR login OR "security alert" OR password OR "verify your" OR "confirm your"'
+    ' OR welcome OR Willkommen OR bienvenue OR statement OR Kontoauszug OR "your account" OR "Ihr Konto"'
+    ' OR "votre compte" OR policy OR Police OR contract OR Vertrag OR "order confirmation" OR booking'
+    ' OR Buchung OR reservation OR membership OR Mitgliedschaft'
+)
+
+
+def build_query(months: int = 24, terms: str = BILLING_TERMS) -> str:
+    return f"newer_than:{months}m ({terms}) -in:spam"
 
 
 def _decode(data: str) -> str:
@@ -93,6 +107,9 @@ def _is_auth_error(exc: Exception) -> bool:
 class GmailSource:
     """Read-only Gmail source. Pass OAuth credentials (see `subscription_finder.auth`).
 
+    `terms` selects which emails are fetched: `BILLING_TERMS` (subscriptions, default) or
+    `FOOTPRINT_TERMS` (also security, sign-up, statement, contract and order emails).
+
     `service` may be injected (e.g. a fake in tests) instead of credentials.
     """
 
@@ -108,6 +125,7 @@ class GmailSource:
         body_chars: int = 1500,
         snippet_chars: int = 200,
         today: date | None = None,
+        terms: str = BILLING_TERMS,
     ):
         if credentials is None and service is None:
             raise ValueError("GmailSource needs credentials or a service")
@@ -117,7 +135,7 @@ class GmailSource:
         self.max_messages = max_messages
         self.body_chars = body_chars
         self.snippet_chars = snippet_chars
-        self.query = build_query(months)
+        self.query = build_query(months, terms)
         self._today = today or date.today()
         self._account: str | None = None
         self._scanned = 0

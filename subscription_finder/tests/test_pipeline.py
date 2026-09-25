@@ -266,3 +266,55 @@ def test_cancel_url_must_be_a_link_from_the_emails(settings):
     assert "SECRET" not in summary and "links_found_in_emails" in summary
     # a plausible but invented path on the right domain is rejected
     assert run("https://www.streamy.com/cancel-service")[0] is None
+
+
+# -- LLM error handling ----------------------------------------------------------
+
+class _ApiError(Exception):
+    def __init__(self, status, body):
+        super().__init__(f"Error code: {status} - {body}")
+        self.status_code, self.body = status, body
+
+
+def test_bad_request_is_not_retried_and_keeps_the_server_message(settings):
+    from subscription_finder.llm.client import LLMError
+
+    fake = FakeLLM(_ApiError(400, {"message": "max_tokens is too large"}), "{}")
+    llm = LLMClient(settings, client=fake)
+    with pytest.raises(LLMError, match="400 .*max_tokens is too large"):
+        llm.complete_json("s", "u")
+    assert len(fake.calls) == 1
+    assert "max_tokens is too large" in llm.last_error
+
+
+def test_expired_quota_is_not_retried(settings):
+    from subscription_finder.llm.client import LLMError
+
+    fake = FakeLLM(_ApiError(429, {"code": "EXPIRED_QUOTA", "message": "Your quota for this service has been exhausted."}))
+    llm = LLMClient(settings, client=fake)
+    with pytest.raises(LLMError, match="quota"):
+        llm.complete_json("s", "u")
+    assert len(fake.calls) == 1
+
+
+def test_interpretation_is_batched_and_max_tokens_capped(settings):
+    candidates = [c for i in range(4) for c in detect(series(START, 6, 30, 10.0 + 20 * i), settings)]
+    assert len(candidates) == 4
+    seen = []
+
+    class Recorder(FakeLLM):
+        def _create(self, model, messages, **kwargs):
+            seen.append(kwargs["max_tokens"])
+            return super()._create(model, messages, **kwargs)
+
+    settings.llm_max_tokens = 500
+    assert interpret(candidates, LLMClient(settings, client=Recorder(_interpretation(), _interpretation())), batch_size=2)
+    assert seen == [500, 500]  # 2 batches; 250*2+200 = 700 capped to 500
+    assert all(c.llm_used for c in candidates)
+
+
+def test_pipeline_warning_names_the_llm_error(settings):
+    fake = FakeLLM(_ApiError(400, {"message": "context length exceeded"}))
+    result = detect_subscriptions(transactions=io.StringIO(jsonl_rows(monthly_rows())), reference_date=REF,
+                                  settings=settings, llm_client=fake)
+    assert any("context length exceeded" in w for w in result["run"]["warnings"])
