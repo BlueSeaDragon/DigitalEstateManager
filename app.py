@@ -448,13 +448,15 @@ def _asset_sub_type(asset: Asset) -> str:
     return sub_info.plan_tier if sub_info and sub_info.plan_tier else "subscription"
 
 
-def researched_cancel_policy(asset: Asset, sub_type: str):
-    """Researches the provider's cancellation policy once per asset/plan and session.
+def researched_cancel_policy(asset: Asset, sub_type: str, mode: str = "during_life"):
+    """Researches the provider's cancellation policy once per asset/plan/mode and session.
+
+    `mode` is "during_life" (the owner cancels) or "after_death" (an executor cancels for the deceased).
 
     Returns the CancelPolicy, or an error message when the engine is unavailable or fails.
     """
     cache = st.session_state.setdefault("researched_cancel_policies", {})
-    key = (asset.id, sub_type)
+    key = (asset.id, sub_type, mode)
     if key not in cache:
         if rag_engine is None:
             cache[key] = f"The cancellation engine is not installed ({CANCELLATION_ENGINE_ERROR})."
@@ -464,7 +466,7 @@ def researched_cancel_policy(asset: Asset, sub_type: str):
                     _, cancel_policy = rag_engine.search_web_cancellation_policy(
                         asset.service,
                         sub_type=sub_type,
-                        mode="during_life",
+                        mode=mode,
                         service_address=asset.service_address or None,
                     )
                     cache[key] = cancel_policy
@@ -544,8 +546,14 @@ def render_plan_picker(asset: Asset, policy: CancelPolicy, plan_key: str) -> Non
               on_click=_set_state, args=(plan_key, {"unknown": True}))
 
 
-def render_written_notice(asset: Asset, policy: CancelPolicy, sub_type: str, kind: str) -> None:
-    """Button that writes the cancellation email text or letter PDF, and shows the result."""
+def render_written_notice(
+    asset: Asset, policy: CancelPolicy, sub_type: str, kind: str, mode: str = "during_life", deceased_name: str = ""
+) -> None:
+    """Button that writes the cancellation email text or letter PDF, and shows the result.
+
+    After a death the executor is the sender and the letter names the deceased account holder.
+    """
+    after_death = mode == "after_death"
     name = display_name(asset)
     mailing_address = policy.action_payload.get("mailing_address") or ""
     if kind == "email":
@@ -556,17 +564,23 @@ def render_written_notice(asset: Asset, policy: CancelPolicy, sub_type: str, kin
         st.caption(f"{name} requires a written cancellation letter. Generate a ready-to-sign PDF.")
 
     n1, n2 = st.columns(2)
-    sender_name = n1.text_input("Your full name", key=f"cxl_sender_{asset.id}")
-    contract_id = n2.text_input("Customer or contract number", value=asset.username, key=f"cxl_contract_{asset.id}")
+    sender_name = n1.text_input("Your full name (executor)" if after_death else "Your full name",
+                                key=f"cxl_sender_{mode}_{asset.id}")
+    contract_id = n2.text_input("Customer or contract number", value=asset.username, key=f"cxl_contract_{mode}_{asset.id}")
+    deceased = ""
+    if after_death:
+        deceased = st.text_input("Name of the deceased", value=deceased_name, key=f"cxl_deceased_{asset.id}")
+    ready = bool(sender_name.strip()) and (bool(deceased.strip()) or not after_death)
 
     notices = st.session_state.setdefault("generated_cancel_notices", {})
+    notice_key = (asset.id, mode)
     if st.button(
         "Write cancellation email" if kind == "email" else "Generate cancellation letter",
         type="primary",
         icon=":material/edit:" if kind == "email" else ":material/description:",
-        disabled=not sender_name.strip(),
-        help=None if sender_name.strip() else "Enter your name first.",
-        key=f"cxl_write_{asset.id}",
+        disabled=not ready,
+        help=None if ready else ("Enter your name and the name of the deceased first." if after_death else "Enter your name first."),
+        key=f"cxl_write_{mode}_{asset.id}",
     ):
         with st.spinner("Writing your cancellation..."):
             try:
@@ -575,24 +589,25 @@ def render_written_notice(asset: Asset, policy: CancelPolicy, sub_type: str, kin
                     sub_type=sub_type,
                     person_name=sender_name.strip(),
                     contract_id=contract_id.strip() or "-",
-                    mode="during_life",
+                    mode=mode,
                     cancel_policy=policy,
+                    deceased_name=deceased.strip() or None,
                 )
                 pdf_bytes = None
                 if kind == "letter":
                     pdf_bytes = _letter_pdf_bytes(sender_name.strip(), asset.service, mailing_address or "Kundenservice", letter)
-                notices[asset.id] = {"kind": kind, "text": letter, "pdf": pdf_bytes}
+                notices[notice_key] = {"kind": kind, "text": letter, "pdf": pdf_bytes}
             except Exception as exc:
                 ui.error_with_details("The cancellation could not be written. Try again.", exc)
 
-    notice = notices.get(asset.id)
+    notice = notices.get(notice_key)
     if not notice or notice["kind"] != kind:
         return
 
     if kind == "email":
         subject, body = _split_subject(notice["text"], f"Kündigung {asset.service} ({contract_id})")
         ui.definition_list({"Send to": policy.support_email, "Subject": subject})
-        st.text_area("Email text", body, height=260, key=f"cxl_email_text_{asset.id}")
+        st.text_area("Email text", body, height=260, key=f"cxl_email_text_{mode}_{asset.id}")
         if policy.support_email:
             st.link_button(
                 "Open in mail app",
@@ -601,7 +616,7 @@ def render_written_notice(asset: Asset, policy: CancelPolicy, sub_type: str, kin
             )
     else:
         ui.definition_list({"Send by registered mail to": mailing_address.replace("\n", ", ")})
-        st.text_area("Letter text", notice["text"], height=260, key=f"cxl_letter_text_{asset.id}")
+        st.text_area("Letter text", notice["text"], height=260, key=f"cxl_letter_text_{mode}_{asset.id}")
         st.download_button(
             "Download letter (PDF)",
             data=notice["pdf"],
@@ -610,12 +625,17 @@ def render_written_notice(asset: Asset, policy: CancelPolicy, sub_type: str, kin
             type="primary",
             icon=":material/download:",
             on_click="ignore",
-            key=f"cxl_pdf_{asset.id}",
+            key=f"cxl_pdf_{mode}_{asset.id}",
         )
 
 
 def render_researched_cancellation(
-    asset: Asset, policy: CancelPolicy, sub_type: str, general_policy: bool = False
+    asset: Asset,
+    policy: CancelPolicy,
+    sub_type: str,
+    general_policy: bool = False,
+    mode: str = "during_life",
+    deceased_name: str = "",
 ) -> None:
     """Shows only what the RAG engine researched: facts, steps, links, contacts, documents.
 
@@ -628,6 +648,7 @@ def render_researched_cancellation(
         "Cancel via": CHANNEL_LABELS.get(payload.get("primary_channel")),
         "Notice period": payload.get("notice_period"),
         "Minimum term": payload.get("minimum_contract_duration"),
+        "Legal basis": payload.get("legal_basis"),
     })
 
     enough_steps = len(policy.steps) >= MIN_STEPS_FOR_GUIDE
@@ -672,25 +693,30 @@ def render_researched_cancellation(
 
     kind = _letter_kind(policy)
     if kind:
-        render_written_notice(asset, policy, sub_type, kind)
+        render_written_notice(asset, policy, sub_type, kind, mode, deceased_name)
 
 
 @st.dialog("Cancellation guide", width="large")
-def cancellation_guide_dialog(asset: Asset):
-    """Researches how to cancel on open and shows only that, plus the email or letter when needed."""
-    ui.section_label(display_name(asset), first=True)
+def cancellation_guide_dialog(asset: Asset, mode: str = "during_life", deceased_name: str = ""):
+    """Researches how to cancel on open and shows only that, plus the email or letter when needed.
+
+    The owner opens it in "during_life" mode; the executor view opens it in "after_death" mode,
+    which researches the rules for cancelling a deceased person's contract.
+    """
+    after_death = mode == "after_death"
+    ui.section_label(f"{display_name(asset)}, cancellation after death" if after_death else display_name(asset), first=True)
 
     # Research runs with the account's plan (if known). When the rules differ per plan, the user
     # picks or types a plan (researched again) or continues with the general policy.
     sub_type = _asset_sub_type(asset)
-    plan_key = f"cxl_plan_{asset.id}"
+    plan_key = f"cxl_plan_{mode}_{asset.id}"
     choice = st.session_state.get(plan_key)  # None, {"plan": name} or {"unknown": True}
-    researched = researched_cancel_policy(asset, sub_type)
+    researched = researched_cancel_policy(asset, sub_type, mode)
     general_policy = False
 
     if isinstance(researched, CancelPolicy) and _needs_plan(researched):
         if choice and choice.get("plan"):
-            plan_result = researched_cancel_policy(asset, choice["plan"])
+            plan_result = researched_cancel_policy(asset, choice["plan"], mode)
             if isinstance(plan_result, CancelPolicy) and _needs_plan(plan_result):
                 ui.notice(f"No specific policy was found for the plan '{choice['plan']}'. Pick another option.", "amber")
                 choice = None
@@ -709,24 +735,28 @@ def cancellation_guide_dialog(asset: Asset):
                           on_click=_set_state, args=(plan_key, None))
 
     if isinstance(researched, CancelPolicy):
-        render_researched_cancellation(asset, researched, sub_type, general_policy)
+        render_researched_cancellation(asset, researched, sub_type, general_policy, mode, deceased_name)
     elif researched is not None:
         ui.notice(f"The cancellation policy could not be researched: {researched}", "red")
         if rag_engine is not None:
             st.button("Try again", icon=":material/refresh:", key=f"cxl_retry_{asset.id}",
-                      on_click=lambda: st.session_state.researched_cancel_policies.pop((asset.id, sub_type), None))
+                      on_click=lambda: st.session_state.researched_cancel_policies.pop((asset.id, sub_type, mode), None))
 
     st.divider()
-    keep_clicked, confirm_clicked = dialog_footer("Keep active", "Mark as cancelled", f"dlg_cancel_{asset.id}")
+    keep_clicked, confirm_clicked = dialog_footer(
+        "Close" if after_death else "Keep active", "Mark as cancelled", f"dlg_cancel_{mode}_{asset.id}"
+    )
     if keep_clicked:
         st.rerun()
     if confirm_clicked:
-        asset.status = "Cancelled"
+        # Executors track progress as "Completed" (see set_done); owners as "Cancelled"
+        asset.status = "Completed" if after_death else "Cancelled"
         asset.cancel_policy.status = "Completed"
         notify(f"{display_name(asset)} marked as cancelled.")
         st.rerun()
 
-    if st.button("Added by mistake? Remove it instead", type="tertiary", key=f"dlg_switch_remove_{asset.id}"):
+    if not after_death and st.button("Added by mistake? Remove it instead", type="tertiary",
+                                     key=f"dlg_switch_remove_{asset.id}"):
         switch_dialog("remove", asset)
 
 
@@ -949,6 +979,10 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
 
     portal = death_pol.official_portal_url or cancel_pol.target_url or asset.service_address
     with st.container(horizontal=True, vertical_alignment="center"):
+        if not is_flagged and asset.status not in CLOSED and st.button(
+            close_action_label(asset), type="primary", key=f"{key}_exec_cancel"
+        ):
+            cancellation_guide_dialog(asset, mode="after_death", deceased_name=deceased_name)
         done_key = f"exec_done_{key}"
         st.session_state[done_key] = asset.status in CLOSED
         st.checkbox("Action complete", key=done_key, disabled=is_flagged, on_change=set_done, args=(asset, done_key))
