@@ -542,9 +542,9 @@ def render_written_notice(
 ) -> None:
     """Button that writes the cancellation email text or letter PDF, and shows the result.
 
-    After a death the executor is the sender and the letter names the deceased account holder.
+    Same form for owner and executor; after a death the letter also names the deceased
+    (from the executor page's "Name of the deceased" field, if filled in).
     """
-    after_death = mode == "after_death"
     name = display_name(asset)
     mailing_address = policy.action_payload.get("mailing_address") or ""
     if kind == "email":
@@ -555,13 +555,9 @@ def render_written_notice(
         st.caption(f"{name} requires a written cancellation letter. Generate a ready-to-sign PDF.")
 
     n1, n2 = st.columns(2)
-    sender_name = n1.text_input("Your full name (executor)" if after_death else "Your full name",
-                                key=f"cxl_sender_{mode}_{asset.id}")
+    sender_name = n1.text_input("Your full name", key=f"cxl_sender_{mode}_{asset.id}")
     contract_id = n2.text_input("Customer or contract number", value=asset.username, key=f"cxl_contract_{mode}_{asset.id}")
-    deceased = ""
-    if after_death:
-        deceased = st.text_input("Name of the deceased", value=deceased_name, key=f"cxl_deceased_{asset.id}")
-    ready = bool(sender_name.strip()) and (bool(deceased.strip()) or not after_death)
+    ready = bool(sender_name.strip())
 
     notices = st.session_state.setdefault("generated_cancel_notices", {})
     notice_key = (asset.id, mode)
@@ -570,7 +566,7 @@ def render_written_notice(
         type="primary",
         icon=":material/edit:" if kind == "email" else ":material/description:",
         disabled=not ready,
-        help=None if ready else ("Enter your name and the name of the deceased first." if after_death else "Enter your name first."),
+        help=None if ready else "Enter your name first.",
         key=f"cxl_write_{mode}_{asset.id}",
     ):
         with st.spinner("Writing your cancellation..."):
@@ -582,7 +578,7 @@ def render_written_notice(
                     contract_id=contract_id.strip() or "-",
                     mode=mode,
                     cancel_policy=policy,
-                    deceased_name=deceased.strip() or None,
+                    deceased_name=deceased_name.strip() or None,
                 )
                 pdf_bytes = None
                 if kind == "letter":
@@ -691,11 +687,10 @@ def render_researched_cancellation(
 def cancellation_guide_dialog(asset: Asset, mode: str = "during_life", deceased_name: str = ""):
     """Researches how to cancel on open and shows only that, plus the email or letter when needed.
 
-    The owner opens it in "during_life" mode; the executor view opens it in "after_death" mode,
-    which researches the rules for cancelling a deceased person's contract.
+    Owner and executor get the same dialog. Only the research differs: the owner opens it in
+    "during_life" mode, the executor view in "after_death" mode (rules for a deceased person's contract).
     """
-    after_death = mode == "after_death"
-    ui.section_label(f"{display_name(asset)}, cancellation after death" if after_death else display_name(asset), first=True)
+    ui.section_label(display_name(asset), first=True)
 
     # Research runs with the account's plan (if known). When the rules differ per plan, the user
     # picks or types a plan (researched again) or continues with the general policy.
@@ -734,20 +729,18 @@ def cancellation_guide_dialog(asset: Asset, mode: str = "during_life", deceased_
                       on_click=lambda: st.session_state.researched_cancel_policies.pop((asset.id, sub_type, mode), None))
 
     st.divider()
-    keep_clicked, confirm_clicked = dialog_footer(
-        "Close" if after_death else "Keep active", "Mark as cancelled", f"dlg_cancel_{mode}_{asset.id}"
-    )
+    keep_clicked, confirm_clicked = dialog_footer("Keep active", "Mark as cancelled", f"dlg_cancel_{mode}_{asset.id}")
     if keep_clicked:
         st.rerun()
     if confirm_clicked:
-        # Executors track progress as "Completed" (see set_done); owners as "Cancelled"
-        asset.status = "Completed" if after_death else "Cancelled"
+        asset.status = "Cancelled"
         asset.cancel_policy.status = "Completed"
         notify(f"{display_name(asset)} marked as cancelled.")
         st.rerun()
 
-    if not after_death and st.button("Added by mistake? Remove it instead", type="tertiary",
-                                     key=f"dlg_switch_remove_{asset.id}"):
+    # Executors can flag an account but not remove it (see the executor view)
+    if mode == "during_life" and st.button("Added by mistake? Remove it instead", type="tertiary",
+                                           key=f"dlg_switch_remove_{asset.id}"):
         switch_dialog("remove", asset)
 
 
