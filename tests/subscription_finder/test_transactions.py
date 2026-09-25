@@ -1,6 +1,6 @@
 import io
 
-from conftest import jsonl_rows, row
+from tests.subscription_finder.conftest import jsonl_rows, row
 
 from subscription_finder.sources.transactions_jsonl import is_charge, is_refund, load_transactions
 

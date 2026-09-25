@@ -65,7 +65,7 @@ from digital_estate_manager.vault import (
 )
 
 try:
-    from backend import pdf_generator, rag_engine
+    from cancel_policy_finder import pdf_generator, rag_engine
     CANCELLATION_ENGINE_ERROR = None
 except ImportError as exc:  # backend dependencies missing: the cancellation guide reports it
     pdf_generator = rag_engine = None
@@ -81,7 +81,7 @@ except ImportError:  # finder not installed: parse_and_extract() reports that it
         pass
 
 st.set_page_config(
-    page_title="Digital Legacy Vault",
+    page_title="Digital Estate Manager",
     page_icon=":material/lock:",
     layout="wide",
 )

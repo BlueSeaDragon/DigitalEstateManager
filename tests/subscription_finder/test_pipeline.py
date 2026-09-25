@@ -5,7 +5,7 @@ import json
 from datetime import date, timedelta
 
 import pytest
-from conftest import FakeGmailService, FakeLLM, gmail_message, jsonl_rows, row, series, tx
+from tests.subscription_finder.conftest import FakeGmailService, FakeLLM, gmail_message, jsonl_rows, row, series, tx
 
 from subscription_finder import LLMConfigError, detect_subscriptions
 from subscription_finder.config import Settings
