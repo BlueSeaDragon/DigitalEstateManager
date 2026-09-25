@@ -208,3 +208,15 @@ Deviations from the sections above, driven by the sample data:
 | D25 | Single-receipt subscriptions stay out of scope (≥ 2 charges required). | User decision. |
 
 Baseline (`scripts/evaluate.py`, 100 people, `--no-llm`): recall 0.61 (per category 0.11 music to 0.73 software/streaming), 2.4 subscriptions per person, 0.77 of `none` people have an active detection. The low music recall and the "false alarms" mostly reflect the labels: sample music charges are usually worded like streaming ("media streaming"), and many `none` people (e.g. C000000, C000003) have regular subscription-like charges.
+
+## 11. Digital footprint extension (2026-09-25)
+
+| # | Decision | Why |
+|---|----------|-----|
+| D26 | New `footprint/` package inside the finder; `discover_footprint()` runs the unchanged subscription pipeline and appends `accounts`. `detect_subscriptions()` output is unchanged. | Reuses Gmail/OAuth, parsing, LLM client and evidence model; subscriptions stay backwards compatible. |
+| D27 | Every record becomes a `Signal` (service key, kind, strength, rule, optional type). Extractors exist for emails, bank transactions (brand keywords), detected subscriptions and the connected mailbox. | One merge/confidence path for all sources; a new source only has to produce signals. |
+| D28 | Service identity = catalog match on the longest sender-domain suffix (e.g. `aws.amazon.com` ≠ `amazon.com`), else the registrable domain. Personal freemail senders are ignored. | Deterministic, explainable, merges subdomains of one service. |
+| D29 | Email kind is decided by the subject first, then the body. Strength: strong (security, account creation, statement, invoice, contract, subscription), medium (order, account notice, transaction), weak (marketing, other). Confidence follows the strongest evidence. | Body footers ("forgot your password?", "unsubscribe") would otherwise mislabel emails. |
+| D30 | The LLM only types services missing from the catalog and the keyword rules, with strong or medium evidence, in batches of 40, from headers only. Names must appear in the evidence. On failure, the type stays `other` and a warning is added. | Token-efficient and private; no invented names (see D12). |
+| D31 | In footprint mode Gmail uses `FOOTPRINT_TERMS` (a superset of the billing terms), and only emails matching `BILLING_PATTERN` get per-email billing extraction. | The broader query must not multiply LLM calls or change what the subscription detector sees. |
+| D32 | Codes in security/sign-up emails are redacted; each account lists at most 10 evidence records (strongest, then newest) and counts the rest. | Privacy and output size. |

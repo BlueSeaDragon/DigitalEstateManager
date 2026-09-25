@@ -24,6 +24,22 @@ class LLMConfigError(LLMError):
     """The LLM is enabled but not configured (e.g. missing SWISSCOM_API_KEY)."""
 
 
+# The server refused the request itself (bad request, auth, unknown model): retrying cannot help.
+NON_RETRYABLE_STATUS = frozenset({400, 401, 403, 404, 413, 422})
+
+
+def describe_error(exc: BaseException) -> str:
+    """Status code and the server's error message, e.g. "400 BadRequestError: max_tokens too large"."""
+    status = getattr(exc, "status_code", None)
+    body = getattr(exc, "body", None)
+    message = None
+    if isinstance(body, dict):
+        error = body.get("error")
+        message = body.get("message") or (error.get("message") if isinstance(error, dict) else error)
+    text = f"{type(exc).__name__}: {message or exc}"
+    return (f"{status} {text}" if status else text)[:300]
+
+
 def parse_json(text: str) -> Any:
     """Parse JSON from a model answer, tolerating code fences and surrounding prose."""
     text = text.strip()
@@ -53,6 +69,8 @@ class LLMClient:
         self._last_call = 0.0
         self._lock = threading.Lock()
         self.usage = {"requests": 0, "cache_hits": 0, "input_tokens": 0, "output_tokens": 0}
+        self.max_tokens = settings.llm_max_tokens
+        self.last_error: str | None = None  # status + server message of the last failure (no prompt content)
         if client is None:
             if not settings.api_key:
                 raise LLMConfigError(
@@ -104,14 +122,21 @@ class LLMClient:
                 return content
             except Exception as exc:  # network, rate limit, 5xx
                 last_exc = exc
-                log.warning("LLM request failed (attempt %d/%d): %s", attempt + 1, self.retries, type(exc).__name__)
+                status = getattr(exc, "status_code", None)
+                detail = describe_error(exc)
+                log.warning("LLM request failed (attempt %d/%d): %s", attempt + 1, self.retries, detail)
+                if (status in NON_RETRYABLE_STATUS) or "EXPIRED_QUOTA" in str(exc):
+                    self.last_error = detail
+                    raise LLMError(f"LLM request rejected: {detail}") from exc
                 time.sleep(min(2**attempt, 8))
-        raise LLMError(f"LLM request failed after {self.retries} attempts") from last_exc
+        self.last_error = describe_error(last_exc) if last_exc else None
+        raise LLMError(f"LLM request failed after {self.retries} attempts: {self.last_error}") from last_exc
 
     # -- public -------------------------------------------------------------
     def complete_json(self, system: str, user: str, max_tokens: int = 1024, validate=None) -> Any:
         """Ask for JSON. On invalid JSON (or failed `validate`) send one repair request."""
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        max_tokens = min(max_tokens, self.max_tokens)
         answer = self._raw_call(messages, max_tokens)
         try:
             data = parse_json(answer)
