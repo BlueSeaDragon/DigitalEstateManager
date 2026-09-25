@@ -61,9 +61,7 @@ from digital_estate_manager.vault import (
     get_default_assets,
     join_wish,
     monthly_cost_chf,
-    responsible_heir,
     save_wishes,
-    set_wish,
     split_wish,
 )
 
@@ -95,6 +93,7 @@ PAGES = ["Assets", "Discover"]
 LEGACY_PAGES = {"Overview": "Assets", "Catalogue": "Assets", "Find Assets": "Discover"}
 CATEGORIES = ["Subscription", "Crypto / Finance", "Cloud Storage", "Social Media", "Other"]
 CLOSED = ("Cancelled", "Archived", "Completed")
+ACTIONS = ["Cancel", "Transfer & Archive", "Probate Recovery", "Memorialize", "Delete Account"]
 STATUSES = ["Active", "Pending Review", "In Progress", "Completed", "Cancelled", "Archived", "Removed", "Wrongly Attributed"]
 
 # =============================================================================
@@ -335,6 +334,12 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         custom_notes_val = st.text_area("Description", key="modal_other_notes")
 
     ui.section_label("After death")
+    col_o1, col_o2 = st.columns(2, vertical_alignment="top")
+    with col_o1:
+        heir_input = st.text_input("Responsible heir", value="Alex", key="modal_heir")
+    with col_o2:
+        action_input = st.selectbox("Planned action", ACTIONS, key="modal_action")
+
     wish_input = st.selectbox(
         "Your wish for this account (optional)",
         WISH_OPTIONS,
@@ -342,9 +347,9 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         key="modal_wish",
     )
     wish_detail = ""
-    if wish_input in WISH_TEXT_HINTS:
-        label, placeholder = WISH_TEXT_HINTS[wish_input]
-        wish_detail = st.text_input(label, max_chars=60, key=f"modal_wish_text_{wish_input}", placeholder=placeholder)
+    if wish_input == "Other":
+        wish_detail = st.text_input("Your wish, in a few words", max_chars=60, key="modal_wish_text",
+                                    placeholder="e.g. give the photos to my sister")
     notes_input = st.text_input("Notes (optional)", key="modal_notes")
 
     cancel_clicked, save_clicked = dialog_footer("Cancel", "Add asset", "modal_save")
@@ -404,6 +409,7 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             )
 
         default_death, default_cancel = get_policies_for_service(service_input, website_input)
+        default_cancel.action_name = action_input
 
         new_asset = Asset(
             service=service_input.strip(),
@@ -412,11 +418,12 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             death_policy=default_death,
             cancel_policy=default_cancel,
             asset_infos=infos_to_add,
+            heir=heir_input.strip() or "Unassigned",
+            wish=join_wish(wish_input, wish_detail),
             status="Active",
             notes=notes_input.strip() if notes_input else None,
         )
 
-        set_wish(new_asset, join_wish(wish_input, wish_detail))
         st.session_state.assets.append(new_asset)
         save_wishes([new_asset])
         notify(f"{new_asset.service} added.")
@@ -815,14 +822,8 @@ def set_status(asset: Asset, status: str, message: Optional[str] = None) -> None
         notify(message)
 
 
-WISH_TEXT_HINTS = {  # choice -> (label, placeholder) of its short text box
-    "Pass to heir": ("Name of the heir", "e.g. Jordan"),
-    "Other": ("Your wish, in a few words", "e.g. give the photos to my sister"),
-}
-
-
 def wish_picker(asset: Asset, key: str) -> None:
-    """The owner's wish as a dropdown, plus a short text for "Pass to heir" (the name) and "Other". Saved to data/wishes.json."""
+    """The owner's wish as a dropdown, plus a short text for "Other". A change is saved to data/wishes.json."""
     current, detail = split_wish(asset.wish)
     options = WISH_OPTIONS + ([current] if current not in WISH_OPTIONS else [])
     choice = st.selectbox(
@@ -832,13 +833,13 @@ def wish_picker(asset: Asset, key: str) -> None:
         format_func=lambda option: option or "Not set",
         key=f"wish_{key}_{current}",  # the wish in the key rebuilds the widget after an edit elsewhere
     )
-    if choice in WISH_TEXT_HINTS:
-        label, placeholder = WISH_TEXT_HINTS[choice]
-        detail = st.text_input(label, value=detail if choice == current else "", max_chars=60, placeholder=placeholder,
+    if choice == "Other":
+        detail = st.text_input("Your wish, in a few words", value=detail, max_chars=60,
+                               placeholder="e.g. give the photos to my sister",
                                label_visibility="collapsed", key=f"wish_text_{key}_{asset.wish}")
     wish = join_wish(choice, detail)
     if wish != asset.wish:
-        set_wish(asset, wish)
+        asset.wish = wish
         save_wishes(st.session_state.assets)
         st.rerun()
 
@@ -847,6 +848,8 @@ def owner_details(asset: Asset, key: str) -> None:
     """Definition list, evidence for detected items, and the contextual actions."""
     facts: Dict[str, object] = {"Account": asset.username or "Not recorded", "Website": asset.service_address}
     facts.update(asset_facts(asset))
+    facts["Responsible heir"] = asset.heir
+    facts["Planned action"] = asset.action
     if asset.notes and not asset.evidence and asset.user_verified:
         facts["Notes"] = asset.notes
     ui.definition_list(facts)
@@ -914,7 +917,7 @@ def owner_rows(assets: List[Asset], prefix: str) -> None:
 def notification_letter(asset: Asset, deceased_name: str) -> str:
     return generate_action_email(
         asset=asset,
-        executor_name=responsible_heir(asset) or "Authorized heir",
+        executor_name=asset.heir if asset.heir != "Unassigned" else "Authorized heir",
         deceased_name=deceased_name or "[Name of the deceased]",
         account_email=asset.username or None,
     )
@@ -941,7 +944,7 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
 
     facts: Dict[str, object] = {"Account": asset.username or "Not recorded", "Website": asset.service_address}
     facts.update(asset_facts(asset))
-    facts["Responsible heir"] = responsible_heir(asset)  # hidden unless the wish is "Pass to heir"
+    facts["Responsible heir"] = asset.heir
     if asset.wish:
         facts["Owner's wish"] = asset.wish
     facts["Action"] = cancel_pol.action_name
@@ -992,7 +995,7 @@ def executor_rows(assets: List[Asset], prefix: str, deceased_name: str) -> None:
             with c2:
                 ui.cell(monthly_display(asset), categories_display(asset))
             with c3:
-                ui.cell(responsible_heir(asset))
+                ui.cell(asset.heir)
             with c4:
                 st.markdown(ui.status_label(status_text(asset.status)), unsafe_allow_html=True)
             is_open = row_key in st.session_state.open_rows
@@ -1074,7 +1077,7 @@ def inventory_csv(assets: List[Asset]) -> str:
     writer.writerow(["Service", "Account", "Website", "Category", "Per month", "Responsible heir", "Planned action", "Status"])
     for a in assets:
         writer.writerow([a.service, a.username, a.service_address, categories_display(a), monthly_display(a),
-                         responsible_heir(a), a.action, a.status])
+                         a.heir, a.action, a.status])
     return out.getvalue()
 
 
@@ -1426,9 +1429,8 @@ if page == "Assets" and role == "Owner":
         legacy_policy_view([a for a in shown if a.status not in ("Removed", "Wrongly Attributed")])
     elif table_view:
         df = pd.DataFrame([a.to_table_row() for a in shown])
-        if not df.empty:  # the text of a wish (heir's name, "Other") is edited on the account card
+        if not df.empty:  # the text of "Other" is edited on the account card
             df["My Wish"] = df["My Wish"].map(lambda wish: split_wish(wish)[0])
-            df = df.drop(columns=["Heir", "Action"])
         edited = st.data_editor(
             df,
             width="stretch",
@@ -1440,6 +1442,7 @@ if page == "Assets" and role == "Owner":
                     "Your wish", help="What should happen to this account after your death", options=WISH_OPTIONS[1:]
                 ),
                 "Cost": st.column_config.TextColumn("Cost / value"),
+                "Action": st.column_config.SelectboxColumn("Action", options=ACTIONS),
                 "Status": st.column_config.SelectboxColumn("Status", options=STATUSES),
             },
         )
@@ -1451,7 +1454,7 @@ if page == "Assets" and role == "Owner":
             new_wish = row.get("My Wish")
             new_wish = new_wish if isinstance(new_wish, str) else ""
             if asset and split_wish(asset.wish)[0] != new_wish:
-                set_wish(asset, new_wish)
+                asset.wish = new_wish
                 wish_changed = True
         if wish_changed:
             save_wishes(current_assets)
