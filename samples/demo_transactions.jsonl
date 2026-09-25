@@ -264,3 +264,4 @@
 {"client_id": "DEMO-ZH-001", "timestamp": "2026-09-17T07:19:00Z", "amount": 3.0, "currency": "CHF", "direction": "out", "type": "card_payment", "description": "APPLE.COM/BILL iCloud+ 200GB", "mcc": "5818", "fee": 0.0}
 {"client_id": "DEMO-ZH-001", "timestamp": "2026-09-19T11:43:00Z", "amount": 126.55, "currency": "CHF", "direction": "out", "type": "card_payment", "description": "ZEUGHAUSKELLER ZUERICH", "mcc": "5812", "fee": 0.0}
 {"client_id": "DEMO-ZH-001", "timestamp": "2026-09-19T19:14:00Z", "amount": 20.0, "currency": "USD", "direction": "out", "type": "card_payment", "description": "OPENAI *CHATGPT SUBSCR San Francisco", "mcc": "5734", "fee": 0.0}
+{"client_id": "DEMO-ZH-001", "timestamp": "2026-09-25T12:22:00Z", "amount": 7850.0, "currency": "CHF", "direction": "in", "type": "transfer", "description": "Lohn ACME Treuhand AG", "mcc": null, "fee": 0.0}

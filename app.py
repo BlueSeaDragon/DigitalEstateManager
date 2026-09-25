@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 import time
+from datetime import date
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 from urllib.parse import quote
@@ -90,8 +91,8 @@ st.set_page_config(
 ui.inject_styles()
 
 DEMO_DATASET = REPO_ROOT / "samples" / "demo_transactions.jsonl"
-PAGES = ["Overview", "Assets", "Discover"]
-LEGACY_PAGES = {"Catalogue": "Assets", "Find Assets": "Discover"}
+PAGES = ["Assets", "Discover"]
+LEGACY_PAGES = {"Overview": "Assets", "Catalogue": "Assets", "Find Assets": "Discover"}
 CATEGORIES = ["Subscription", "Crypto / Finance", "Cloud Storage", "Social Media", "Other"]
 CLOSED = ("Cancelled", "Archived", "Completed")
 STATUSES = ["Active", "Pending Review", "In Progress", "Completed", "Cancelled", "Archived", "Removed", "Wrongly Attributed"]
@@ -111,9 +112,11 @@ elif len(st.session_state.assets) > 0 and isinstance(st.session_state.assets[0],
     st.session_state.assets = [Asset.from_table_row(d) for d in st.session_state.assets]
 
 if st.session_state.get("active_page") not in PAGES:
-    st.session_state.active_page = LEGACY_PAGES.get(st.session_state.get("active_page"), "Overview")
+    st.session_state.active_page = LEGACY_PAGES.get(st.session_state.get("active_page"), "Assets")
 st.session_state.setdefault("open_rows", set())
 st.session_state.setdefault("toasts", [])
+# Preference only for now: nothing sends the reminder yet.
+st.session_state.setdefault("yearly_reminder", True)
 
 
 def handle_oauth_redirect() -> None:
@@ -203,23 +206,6 @@ def render_policy_summary(death_pol: DeathPolicy) -> None:
             ui.definition_list(policy_answers(death_pol))
     if death_pol.security_warning:
         ui.notice(death_pol.security_warning, "amber")
-
-
-# =============================================================================
-# 2. Sidebar: wordmark, navigation, role
-# =============================================================================
-ui.wordmark()
-st.sidebar.radio("Navigation", PAGES, key="active_page", label_visibility="collapsed")
-
-with st.sidebar.container(key="view_as_block"):
-    role = st.segmented_control(
-        "View as", ["Owner", "Executor"], default="Owner", required=True, key="role"
-    )
-    st.caption(
-        "Owners keep the inventory up to date."
-        if role == "Owner"
-        else "Executors work through the accounts after a death."
-    )
 
 
 # =============================================================================
@@ -995,15 +981,16 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
 
 
 def executor_rows(assets: List[Asset], prefix: str, deceased_name: str) -> None:
-    list_header(["Service", "Category", "Responsible heir", "Status", ""])
-    for asset in assets:
+    """Worklist, largest monthly charge first. Closed items keep their place so rows don't jump when ticked."""
+    list_header(["Service", "Per month", "Responsible heir", "Status", ""])
+    for asset in sorted(assets, key=lambda a: (-monthly_cost_chf(a), display_name(a).lower())):
         row_key = f"{prefix}_{asset.id}"
         with st.container(key=f"row_{row_key}"):
             c1, c2, c3, c4, c5 = st.columns(ROW, vertical_alignment="center")
             with c1:
                 ui.cell(display_name(asset), subtitle(asset), strong=True)
             with c2:
-                ui.cell(categories_display(asset))
+                ui.cell(monthly_display(asset), categories_display(asset))
             with c3:
                 ui.cell(responsible_heir(asset))
             with c4:
@@ -1303,14 +1290,17 @@ def onboarding_reveal() -> None:
     ranked = sorted(found, key=lambda a: (-costs[a.id], display_name(a).lower()))
     items = [(display_name(a), f"{chf(costs[a.id])} / mo" if costs[a.id] else categories_display(a)) for a in ranked]
     ui.reveal(len(found), monthly, needs_review, items, REVEAL_SECONDS)
+    if st.session_state.yearly_reminder:
+        today = date.today()
+        ui.muted(f"Yearly reminder on: we'll ask you to update this in {today:%B} {today.year + 1}.")
     with st.container(key="cta_link"):
-        st.button("Open my dashboard", type="tertiary", key="onb_open", on_click=set_onboarding, args=("done",))
+        st.button("Open my inventory", type="tertiary", key="onb_open", on_click=set_onboarding, args=("done",))
     advance_after_reveal()
 
 
 @st.fragment(run_every=REVEAL_SECONDS)
 def advance_after_reveal() -> None:
-    """Opens the dashboard on the fragment's first timed rerun, when the countdown line is full."""
+    """Opens the inventory on the fragment's first timed rerun, when the countdown line is full."""
     if st.session_state.get("onb_reveal_shown"):
         set_onboarding("done")
         st.rerun()
@@ -1331,140 +1321,211 @@ if st.session_state.onboarding != "done":
 
 
 # =============================================================================
-# PAGE: OVERVIEW
+# 2. Frame: role band, sidebar navigation
 # =============================================================================
+# The view switch sits above every page, not in the sidebar: switching changes the whole app.
+ROLES = {
+    "Owner": ("Owner view", "You keep the inventory up to date for your heirs.", "Your inventory",
+              {"Assets": "Inventory", "Discover": "Find accounts"}),
+    "Executor": ("Executor view", "The owner's inventory, released to you after their death.", "Estate settlement",
+                 {"Assets": "Worklist", "Discover": "Find accounts"}),
+}
+
+with st.container(key="role_bar", horizontal=True, vertical_alignment="center", horizontal_alignment="distribute"):
+    view_name, view_text, _, _ = ROLES[st.session_state.get("role") or "Owner"]
+    ui.role_banner(view_name, view_text)
+    role = st.segmented_control("View as", list(ROLES), default="Owner", required=True, key="role",
+                                label_visibility="collapsed", width="content")
+
+_, _, sidebar_caption, nav_labels = ROLES[role]
+if role == "Executor":
+    ui.inject_executor_styles()
+ui.wordmark(sidebar_caption)
+# One radio per role: relabelling a single radio makes Streamlit draw it with nothing selected.
+# `active_page` stays the source of truth, so buttons elsewhere can switch pages.
+nav_key = f"nav_{role.lower()}"
+st.session_state[nav_key] = st.session_state.active_page
+with st.sidebar.container(key="nav"):
+    st.radio("Navigation", PAGES, key=nav_key, format_func=nav_labels.get, label_visibility="collapsed",
+             on_change=lambda: go_to(st.session_state[nav_key]))
+
+
+def show_to_review() -> None:
+    st.session_state.owner_filter = "To review"
+
+
+def plural(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
 active_pool = [a for a in current_assets if a.status != "Removed"]
 removed_list = [a for a in current_assets if a.status == "Removed"]
 page = st.session_state.active_page
 
-if page == "Overview":
-    if not st.session_state.get("scanned"):
-        ui.page_header("Know what you leave behind.")
-        ui.muted(
-            "Most people have dozens of subscriptions and accounts that no one else knows about. "
-            "Scan your transactions to build the inventory your heirs will need."
+
+# =============================================================================
+# PAGE: INVENTORY (owner)
+# =============================================================================
+if page == "Assets" and role == "Owner":
+    unconfirmed = [a for a in active_pool if not a.user_verified]
+    scanned = st.session_state.get("scanned")
+
+    if not scanned:
+        action_col = ui.page_header(
+            "Know what you leave behind.",
+            "Most people have dozens of accounts no one else knows about. "
+            "Scan your transactions to build the inventory your heirs will need.",
+            eyebrow="Your digital estate",
         )
-        with st.container(horizontal=True):
-            st.button("Scan my digital footprint", type="primary", on_click=queue_demo_scan)
-            if st.button("Connect Gmail"):
-                email_connection_dialog()
-        st.caption("The scan uses a demo dataset of a fictional Zurich resident.")
-        ui.section_label("How it works")
-        ui.journey_strip(current=1)
     else:
+        action_col = ui.page_header(
+            plural(len(active_pool), "account your heirs will need to find.", "accounts your heirs will need to find."),
+            "Confirm what the scan found, then note what should happen to each one.",
+            eyebrow="Your digital estate",
+        )
+    with action_col:
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            if not scanned:
+                st.button("Scan my digital footprint", type="primary", on_click=queue_demo_scan)
+            elif unconfirmed:
+                st.button(f"Review {len(unconfirmed)} detected", type="primary", key="btn_review",
+                          on_click=show_to_review)
+            if st.button("Add asset", type="secondary" if not scanned or unconfirmed else "primary",
+                         icon=":material/add:", key="btn_add_asset"):
+                modal_add_asset_dialog(default_category="Subscription")
+
+    if scanned:
         metrics = calculate_metrics(current_assets)
         needs_review = [a for a in active_pool if a.review_label == "Needs review"]
-        unconfirmed = [a for a in active_pool if not a.user_verified]
         subscriptions = [a for a in active_pool if a.has_type("Subscription") and a.status not in CLOSED]
-
-        action_col = ui.page_header("Overview", "Everything your heirs will need to find, in one place.")
-        with action_col:
-            with st.container(horizontal=True, horizontal_alignment="right"):
-                label = f"Review {len(unconfirmed)} detected items" if unconfirmed else "Go to assets"
-                st.button(label, type="primary", on_click=go_to, args=("Assets",))
-
         ui.kpi_strip([
-            (str(len(active_pool)), "assets found", False),
-            (str(len(subscriptions)), "subscriptions", False),
             (chf(metrics["active_monthly_spend_chf"]), "per month, recurring (approx.)", False),
-            (str(len(needs_review)), "need review", bool(needs_review)),
+            (str(len(subscriptions)), "active subscriptions", False),
+            (str(len(needs_review)), "need your review", bool(needs_review)),
         ])
+    else:
+        st.caption("The scan uses a demo dataset of a fictional Zurich resident.")
 
-        ui.section_label("By category")
-        rows = []
-        for category in ["Subscriptions", "Finance", "Cloud", "Social", "Other"]:
-            members = [a for a in active_pool if matches_category(a, category)]
-            if members:
-                monthly = sum(monthly_cost_chf(a) for a in members if a.status not in CLOSED)
-                rows.append((category, len(members), monthly))
-        # Bars are relative to the largest category: categories overlap, so shares of a total would not add up.
-        largest = max((m for _, _, m in rows), default=0.0)
-        ui.category_table([(c, n, chf(m) if m else "—", m / largest if largest else 0.0) for c, n, m in rows])
-        st.caption("Assets with several categories are counted in each. Totals use fixed exchange rates.")
+    filters = ["All", "To review", "Subscriptions", "Finance", "Cloud", "Social", "Other"]
+    with st.container(horizontal=True, vertical_alignment="center"):
+        choice = st.segmented_control("Filter", filters, default="All", required=True, key="owner_filter",
+                                      label_visibility="collapsed")
+        show_removed = st.toggle(f"Show removed ({len(removed_list)})", key="show_removed")
+        table_view = st.toggle("Table view", key="table_view")
+        policy_view = st.toggle("Legacy policies", key="policy_view")
 
-        ui.section_label("Next steps")
-        ui.journey_strip(current=2)
+    pool = removed_list if show_removed else active_pool
+    if choice == "All":
+        shown = pool
+    elif choice == "To review":
+        shown = [a for a in pool if not a.user_verified]
+    else:
+        shown = [a for a in pool if matches_category(a, choice)]
+
+    if policy_view:
+        legacy_policy_view([a for a in shown if a.status not in ("Removed", "Wrongly Attributed")])
+    elif table_view:
+        df = pd.DataFrame([a.to_table_row() for a in shown])
+        if not df.empty:  # the text of a wish (heir's name, "Other") is edited on the account card
+            df["My Wish"] = df["My Wish"].map(lambda wish: split_wish(wish)[0])
+            df = df.drop(columns=["Heir", "Action"])
+        edited = st.data_editor(
+            df,
+            width="stretch",
+            num_rows="dynamic",
+            column_config={
+                "Service Address": st.column_config.LinkColumn("Website"),
+                "Username": st.column_config.TextColumn("Account"),
+                "My Wish": st.column_config.SelectboxColumn(
+                    "Your wish", help="What should happen to this account after your death", options=WISH_OPTIONS[1:]
+                ),
+                "Cost": st.column_config.TextColumn("Cost / value"),
+                "Status": st.column_config.SelectboxColumn("Status", options=STATUSES),
+            },
+        )
+        # Wish edits are saved; the other columns are not saved yet.
+        by_account = {(a.service, a.username): a for a in shown}
+        wish_changed = False
+        for row in edited.to_dict("records"):
+            asset = by_account.get((row.get("Service"), row.get("Username")))
+            new_wish = row.get("My Wish")
+            new_wish = new_wish if isinstance(new_wish, str) else ""
+            if asset and split_wish(asset.wish)[0] != new_wish:
+                set_wish(asset, new_wish)
+                wish_changed = True
+        if wish_changed:
+            save_wishes(current_assets)
+            st.rerun()
+    elif shown:
+        owner_rows(shown, "own")
+    elif show_removed:
+        ui.muted("Nothing removed. Assets you remove are kept here and can be restored.")
+    elif choice == "To review":
+        ui.muted("Nothing left to review.")
+    else:
+        ui.muted("No assets in this category yet.")
+        st.button("Scan for subscriptions", key="empty_scan", on_click=go_to, args=("Discover",))
+
+    ui.section_label("Keep it current")
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.toggle("Remind me every year to update this inventory", key="yearly_reminder")
         st.download_button(
             "Download inventory (CSV)",
             inventory_csv(active_pool),
             file_name="digital-legacy-inventory.csv",
             mime="text/csv",
             icon=":material/download:",
+            type="tertiary",
             on_click="ignore",
         )
 
 
 # =============================================================================
-# PAGE: ASSETS
+# PAGE: WORKLIST (executor)
 # =============================================================================
 elif page == "Assets":
-    if role == "Owner":
-        action_col = ui.page_header("Assets", "Every account and subscription in your estate.")
+    estate = [a for a in current_assets if a.status not in ("Removed", "Wrongly Attributed")]
+    still_open = [a for a in estate if a.status not in CLOSED]
+    monthly = sum(monthly_cost_chf(a) for a in still_open)
+    named = (st.session_state.get("deceased_name") or "").strip()
+    eyebrow = f"Estate of {named}" if named else "Estate settlement"
+
+    if not estate:
+        ui.page_header("Nothing on file yet.", "The owner's inventory is empty. Scan the deceased's bank "
+                       "statements to find their accounts.", eyebrow=eyebrow)
+        st.button("Find accounts", type="primary", key="exec_discover", on_click=go_to, args=("Discover",))
+    else:
+        if still_open:
+            title = plural(len(still_open), "account left to close.", "accounts left to close.")
+            lead = (f"About {chf(monthly)} a month is still being charged. Largest charges first."
+                    if monthly else "None of them is still charging. Largest charges first.")
+        else:
+            title, lead = "Every account is closed.", "The estate's digital accounts are settled."
+        action_col = ui.page_header(title, lead, eyebrow=eyebrow)
         with action_col:
             with st.container(horizontal=True, horizontal_alignment="right"):
-                if st.button("Add asset", type="primary", icon=":material/add:", key="btn_add_asset"):
-                    modal_add_asset_dialog(default_category="Subscription")
+                st.download_button(
+                    "Estate inventory (CSV)",
+                    inventory_csv(estate),
+                    file_name="estate-inventory.csv",
+                    mime="text/csv",
+                    icon=":material/download:",
+                    key="exec_csv",
+                    on_click="ignore",
+                )
 
-        filters = ["All", "Subscriptions", "Finance", "Cloud", "Social", "Other"]
-        with st.container(horizontal=True, vertical_alignment="center"):
-            choice = st.segmented_control("Filter", filters, default="All", required=True, key="owner_filter",
-                                          label_visibility="collapsed")
-            show_removed = st.toggle(f"Show removed ({len(removed_list)})", key="show_removed")
-            table_view = st.toggle("Table view", key="table_view")
-            policy_view = st.toggle("Legacy policies", key="policy_view")
+        with_policy = sum(1 for a in estate if a.death_policy.ai_generated and a.death_policy.policy_found)
+        ui.kpi_strip([
+            (chf(monthly), "per month still being charged", bool(monthly)),
+            (f"{len(estate) - len(still_open)} of {len(estate)}", "accounts closed", False),
+            (str(with_policy), "with the provider's policy on file", False),
+        ])
 
-        pool = removed_list if show_removed else active_pool
-        shown = pool if choice == "All" else [a for a in pool if matches_category(a, choice)]
-
-        if policy_view:
-            legacy_policy_view([a for a in shown if a.status not in ("Removed", "Wrongly Attributed")])
-        elif table_view:
-            df = pd.DataFrame([a.to_table_row() for a in shown])
-            if not df.empty:  # the text of a wish (heir's name, "Other") is edited on the account card
-                df["My Wish"] = df["My Wish"].map(lambda wish: split_wish(wish)[0])
-                df = df.drop(columns=["Heir", "Action"])
-            edited = st.data_editor(
-                df,
-                width="stretch",
-                num_rows="dynamic",
-                column_config={
-                    "Service Address": st.column_config.LinkColumn("Website"),
-                    "Username": st.column_config.TextColumn("Account"),
-                    "My Wish": st.column_config.SelectboxColumn(
-                        "Your wish", help="What should happen to this account after your death", options=WISH_OPTIONS[1:]
-                    ),
-                    "Cost": st.column_config.TextColumn("Cost / value"),
-                    "Status": st.column_config.SelectboxColumn("Status", options=STATUSES),
-                },
-            )
-            # Wish edits are saved; the other columns are not saved yet.
-            by_account = {(a.service, a.username): a for a in shown}
-            wish_changed = False
-            for row in edited.to_dict("records"):
-                asset = by_account.get((row.get("Service"), row.get("Username")))
-                new_wish = row.get("My Wish")
-                new_wish = new_wish if isinstance(new_wish, str) else ""
-                if asset and split_wish(asset.wish)[0] != new_wish:
-                    set_wish(asset, new_wish)
-                    wish_changed = True
-            if wish_changed:
-                save_wishes(current_assets)
-                st.rerun()
-        elif shown:
-            owner_rows(shown, "own")
-        elif show_removed:
-            ui.muted("Nothing removed. Assets you remove are kept here and can be restored.")
-        else:
-            ui.muted("No assets in this category yet.")
-            st.button("Scan for subscriptions", key="empty_scan", on_click=go_to, args=("Discover",))
-
-    else:
-        ui.page_header("Assets", "Work through each account and record what was done.")
-        deceased_name = st.text_input("Name of the deceased", key="deceased_name", placeholder="Full name",
-                                      width=420)
-
+        st.text_input("Name of the deceased", key="deceased_name", placeholder="Full name, used in the letters",
+                      width=420)
         with st.container(horizontal=True, vertical_alignment="center", gap="small"):
-            st.caption("Executors can flag an account but not remove it.", width="content")
+            st.caption("Most providers ask for the death certificate and your executor certificate. "
+                       "You can flag an account but not remove it.", width="content")
             with st.popover("Why?", type="tertiary"):
                 st.markdown(
                     "Every account the owner listed stays in the records, including ones the owner removed. "
@@ -1486,7 +1547,7 @@ elif page == "Assets":
             shown = [a for a in active_pool if matches_category(a, choice)]
 
         if shown:
-            executor_rows(shown, "exe", deceased_name)
+            executor_rows(shown, "exe", named)
         else:
             ui.muted("No accounts here.")
 
@@ -1495,7 +1556,12 @@ elif page == "Assets":
 # PAGE: DISCOVER
 # =============================================================================
 else:
-    ui.page_header("Discover", "Find subscriptions in bank transactions and billing emails.")
+    if role == "Owner":
+        ui.page_header("Find the accounts you forgot.", "We look for recurring payments in bank transactions "
+                       "and billing emails, and show you why we think each one is yours.", eyebrow="Discovery")
+    else:
+        ui.page_header("Find what the owner didn't list.", "Scan the latest bank statements for accounts "
+                       "opened since the owner's last update.", eyebrow="Discovery")
 
     oauth_message = st.session_state.pop("oauth_message", None)
     if oauth_message:

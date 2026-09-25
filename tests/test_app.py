@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from digital_estate_manager.policies import generate_action_email
+
 st_testing = pytest.importorskip("streamlit.testing.v1")
 
 APP = str(Path(__file__).resolve().parents[1] / "app.py")
@@ -35,11 +37,17 @@ def app(monkeypatch):
     # No LLM in tests: the finder raises LLMConfigError and the app offers rules only.
     monkeypatch.setenv("SWISSCOM_API_KEY", "")
     monkeypatch.setenv("SWISSCOM_BASE_URL", "")
+    monkeypatch.setenv("DLV_ONBOARDING", "0")  # a local .env may turn the guided onboarding on
     return st_testing.AppTest.from_file(APP, default_timeout=60).run()
 
 
 def goto(at, page):
-    at.sidebar.radio(key="active_page").set_value(page).run()
+    at.sidebar.radio[0].set_value(page).run()
+    return at
+
+
+def set_role(at, role):
+    at.segmented_control(key="role").set_value(role).run()
     return at
 
 
@@ -51,17 +59,30 @@ def assert_clean(at):
 
 
 @pytest.mark.parametrize("role", ["Owner", "Executor"])
-@pytest.mark.parametrize("page", ["Overview", "Assets", "Discover"])
+@pytest.mark.parametrize("page", ["Assets", "Discover"])
 def test_pages_render_without_emoji(app, page, role):
-    app.segmented_control(key="role").set_value(role).run()
+    set_role(app, role)
     goto(app, page)
     assert_clean(app)
 
 
-def test_overview_before_scan_offers_the_scan(app):
+def test_inventory_is_the_start_page_and_offers_the_scan(app):
     assert_clean(app)
+    assert app.session_state["active_page"] == "Assets"
     assert app.title[0].value == "Know what you leave behind."
     assert any(b.label == "Scan my digital footprint" for b in app.button)
+    assert any(b.key.startswith("toggle_own_") for b in app.button if b.key)
+
+
+def test_executor_view_is_marked_and_relabelled(app):
+    assert "Owner view" in rendered_text(app)
+    set_role(app, "Executor")
+    assert_clean(app)
+    text = rendered_text(app)
+    assert "Executor view" in text and "Worklist" in text
+    assert "accounts left to close." in app.title[0].value
+    app.text_input(key="deceased_name").input("Anna Muster").run()
+    assert "Estate of Anna Muster" in rendered_text(app)
 
 
 def test_owner_details_show_actions(app):
@@ -73,12 +94,13 @@ def test_owner_details_show_actions(app):
 
 
 def test_executor_details_show_notification_letter(app):
-    app.segmented_control(key="role").set_value("Executor").run()
-    goto(app, "Assets")
+    set_role(app, "Executor")
     app.text_input(key="deceased_name").input("Anna Muster").run()
-    app.button(key=next(b.key for b in app.button if b.key and b.key.startswith("toggle_exe_"))).click().run()
+    # The worklist is sorted by cost; open an account whose action is a letter (not a portal guide).
+    asset = next(a for a in app.session_state["assets"] if generate_action_email(a).startswith("Subject:"))
+    app.button(key=f"toggle_exe_{asset.id}").click().run()
     assert_clean(app)
-    letter = next(t for t in app.text_area if t.key.startswith("exec_notice_"))
+    letter = next(t for t in app.text_area if t.key == f"exec_notice_exe_{asset.id}")
     assert "Anna Muster" in letter.value
 
 
@@ -96,6 +118,8 @@ def test_demo_scan_rules_only_adds_reviewable_findings(app):
     assert all(not a.user_verified and a.evidence for a in found)
     assert {a.review_label for a in found} >= {"Likely", "Needs review"}
 
-    goto(app, "Overview")
+    goto(app, "Assets")
     assert_clean(app)
-    assert any(b.label.startswith("Review ") for b in app.button)
+    app.button(key="btn_review").click().run()
+    assert_clean(app)
+    assert app.segmented_control(key="owner_filter").value == "To review"

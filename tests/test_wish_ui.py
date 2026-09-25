@@ -13,6 +13,11 @@ PICKER = "Your wish after death"
 OTHER_TEXT = "Your wish, in a few words"
 
 
+@pytest.fixture(autouse=True)
+def normal_app(monkeypatch):
+    monkeypatch.setenv("DLV_ONBOARDING", "0")  # a local .env may turn the guided onboarding on
+
+
 @pytest.fixture
 def owner_card(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "WISH_FILE", tmp_path / "wishes.json")

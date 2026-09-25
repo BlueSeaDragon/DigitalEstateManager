@@ -106,3 +106,27 @@ All onboarding screens hide the sidebar and show a slim top bar: wordmark left, 
 - **Sidebar CSS selectors** can change with Streamlit upgrades; the hiding is limited to onboarding.
 - **New tab after OAuth:** the old tab is left behind; cut it in editing.
 - **`@property` count-up** needs a Chromium browser; elsewhere the final numbers show without animation.
+
+## 5. Executor scene (added 2026-09-25)
+
+The jury works on the post-death side, so the one-minute video is now: owner scan (about 20 s) →
+"Three years later" title card → executor. The owner onboarding is unchanged apart from a yearly-reminder
+line on the magic moment and a matching toggle on the owner overview (a stored preference; nothing sends
+reminders yet).
+
+- **Worklist** (executor start page): headline "N accounts left to close.", CHF per month still being
+  charged, how many are closed, accounts with the provider's policy on file. Sorted by monthly cost,
+  largest first; rows keep their place when marked done, so nothing jumps on camera.
+- **No automatic cancellation.** Providers need a death certificate and proof of authority through their own
+  process; DEM prepares the policy, documents and letter.
+
+## 6. Frame and page structure (added 2026-09-25, later)
+
+- **No Overview page.** The asset list is the start page for both roles; its header carries the key
+  figures (headline number, KPI strip) and the one primary action. The reveal's CTA is "Open my inventory".
+- **View switch in a band above every page**, not in the sidebar: switching role changes the whole app.
+- **Executor looks different on purpose:** navy sidebar and navy role band, navy eyebrows, and its own
+  navigation labels (Worklist / Find accounts instead of Inventory / Find accounts), so the cut from owner
+  to executor reads at a glance in the video.
+- **Page headers:** small eyebrow with a rule (orange for owner, navy for executor), a 34px headline in
+  sentence form that states the situation ("20 accounts your heirs will need to find."), one muted line.

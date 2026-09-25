@@ -1,15 +1,15 @@
-"""Presentation helpers and the three read-only hero components (KPI strip, evidence panel,
-journey strip). Hero components are plain HTML and cannot hold buttons: callers place native
+"""Presentation helpers and the read-only hero components (KPI strip, evidence panel).
+Hero components are plain HTML and cannot hold buttons: callers place native
 actions directly below them."""
 
 from html import escape
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import streamlit as st
 
 from digital_estate_manager.models import Asset
 from digital_estate_manager.ui.format import chf, date_display, money, pattern, status_tone
-from digital_estate_manager.ui.styles import CSS, ONBOARDING_CSS
+from digital_estate_manager.ui.styles import CSS, EXECUTOR_CSS, ONBOARDING_CSS
 
 
 def _html(markup: str, container=None) -> None:
@@ -20,19 +20,32 @@ def inject_styles() -> None:
     _html(CSS)
 
 
-def wordmark() -> None:
+def inject_executor_styles() -> None:
+    """Navy sidebar and role band, so the executor view reads as a different screen on camera."""
+    _html(EXECUTOR_CSS)
+
+
+def wordmark(caption: str) -> None:
     _html(
         '<div class="dlv-wordmark">Digital Legacy Vault</div>'
-        '<div class="dlv-wordmark-caption">Digital estate overview</div>',
+        f'<div class="dlv-wordmark-caption">{escape(caption)}</div>',
         st.sidebar,
     )
 
 
-def page_header(title: str, subtitle: Optional[str] = None):
-    """Title (28/700), at most one muted line, and a right-aligned column for the page's single
-    primary action. Returns that column."""
-    left, right = st.columns([4, 1.3], vertical_alignment="bottom")
+def role_banner(name: str, text: str) -> None:
+    """Left half of the role band: which view this is, in one line."""
+    _html(f'<div class="dlv-role"><span class="dlv-role-name">{escape(name)}</span>'
+          f'<span class="dlv-role-text">{escape(text)}</span></div>')
+
+
+def page_header(title: str, subtitle: Optional[str] = None, eyebrow: Optional[str] = None):
+    """Eyebrow label, headline (34/700), at most one muted line, and a right-aligned column for the
+    page's primary action. Returns that column."""
+    left, right = st.columns([4, 1.6], vertical_alignment="bottom")
     with left:
+        if eyebrow:
+            _html(f'<div class="dlv-eyebrow">{escape(eyebrow)}</div>')
         st.title(title, anchor=False)
         if subtitle:
             _html(f'<p class="dlv-subtitle">{escape(subtitle)}</p>')
@@ -86,32 +99,13 @@ def error_with_details(message: str, exc: BaseException) -> None:
 # -----------------------------------------------------------------------------
 
 def kpi_strip(items: Sequence[Tuple[str, str, bool]]) -> None:
-    """Four figures: (value, label, alert)."""
+    """A row of figures: (value, label, alert)."""
     cells = "".join(
         f'<div class="dlv-kpi"><div class="dlv-kpi-value{" dlv-kpi-value--alert" if alert else ""}">'
         f'{escape(value)}</div><div class="dlv-kpi-label">{escape(label)}</div></div>'
         for value, label, alert in items
     )
     _html(f'<div class="dlv-kpis">{cells}</div>')
-
-
-JOURNEY = [
-    ("Inventory", "List every account and subscription."),
-    ("Instructions", "Decide what should happen to each one."),
-    ("Share", "Hand the plan to your executor."),
-]
-
-
-def journey_strip(current: int) -> None:
-    """Inventory -> Instructions -> Share; `current` is the 1-based active step."""
-    steps = []
-    for i, (title, text) in enumerate(JOURNEY, start=1):
-        state = "done" if i < current else "current" if i == current else "todo"
-        steps.append(
-            f'<div class="dlv-step dlv-step--{state}"><div class="dlv-step-no">Step {i}</div>'
-            f'<div class="dlv-step-title">{title}</div><div class="dlv-step-text">{text}</div></div>'
-        )
-    _html(f'<div class="dlv-journey">{"".join(steps)}</div>')
 
 
 def _sources(asset: Asset) -> str:
@@ -153,20 +147,6 @@ def evidence_table(asset: Asset) -> None:
         for e in reversed(asset.evidence)
     ]
     st.dataframe(rows, hide_index=True, width="stretch")
-
-
-def category_table(rows: Iterable[Tuple[str, int, str, float]]) -> None:
-    """Overview's grouped category list: (category, count, monthly, bar length 0..1)."""
-    body = "".join(
-        f'<tr><td>{escape(c)}</td><td class="num">{n}</td><td class="num">{escape(m)}</td>'
-        f'<td class="dlv-share"><span style="width:{max(0.0, min(bar, 1.0)) * 100:.1f}%"></span></td></tr>'
-        for c, n, m, bar in rows
-    )
-    _html(
-        '<table class="dlv-table"><thead><tr><th>Category</th><th class="num">Assets</th>'
-        '<th class="num">Per month (approx.)</th><th class="dlv-share">Spend</th></tr></thead>'
-        f'<tbody>{body}</tbody></table>'
-    )
 
 
 def numbered(items: Sequence[str]) -> None:
