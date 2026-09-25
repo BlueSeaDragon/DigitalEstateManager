@@ -14,7 +14,6 @@ AI-powered digital asset discovery and post-mortem executor platform.
 
 2. **Install dependencies and register the local packages in editable mode** (the subscription finder is installed from its local folder):
    ```bash
-   pip install -e ./subscription_finder
    pip install -e .
    ```
    > **Already set up before the subscription finder was added?** After pulling, run
