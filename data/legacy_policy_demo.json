@@ -156,6 +156,18 @@
     "checked": "2026-09-24"
   },
   {
+    "website": "talktalk.ch",
+    "legacy_policy_url": "https://help-centre.talktalk.co.uk/Manage_account/Change_of_circumstance/Our_bereavement_team",
+    "summary": "TalkTalk provides a dedicated bereavement team to assist with account changes or closure after a death. They require the account details and holder's name when contacted. The team is available Monday to Friday 9:00am–7:00pm and Saturday 9:00am–6:00pm.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": null,
+      "proof_required": null
+    },
+    "checked": "2026-09-25"
+  },
+  {
     "website": "ubs.com",
     "legacy_policy_url": "https://www.ubs.com/ch/en/help/account/case-of-death.html",
     "summary": "UBS Switzerland AG requires a death certificate to register a client's death and process inheritance. Heirs need a certificate of inheritance to access information and assets, while executors and authorized representatives may also receive information after proper identification. Joint account holders may continue to manage assets, but heirs only receive information up to the date of death.",

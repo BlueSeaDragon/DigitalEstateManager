@@ -8,8 +8,8 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import streamlit as st
 
 from digital_estate_manager.models import Asset
-from digital_estate_manager.ui.format import date_display, money, pattern, status_tone
-from digital_estate_manager.ui.styles import CSS
+from digital_estate_manager.ui.format import chf, date_display, money, pattern, status_tone
+from digital_estate_manager.ui.styles import CSS, ONBOARDING_CSS
 
 
 def _html(markup: str, container=None) -> None:
@@ -155,14 +155,17 @@ def evidence_table(asset: Asset) -> None:
     st.dataframe(rows, hide_index=True, width="stretch")
 
 
-def category_table(rows: Iterable[Tuple[str, int, str]]) -> None:
-    """Overview's grouped category list: (category, count, monthly)."""
+def category_table(rows: Iterable[Tuple[str, int, str, float]]) -> None:
+    """Overview's grouped category list: (category, count, monthly, bar length 0..1)."""
     body = "".join(
-        f'<tr><td>{escape(c)}</td><td class="num">{n}</td><td class="num">{escape(m)}</td></tr>' for c, n, m in rows
+        f'<tr><td>{escape(c)}</td><td class="num">{n}</td><td class="num">{escape(m)}</td>'
+        f'<td class="dlv-share"><span style="width:{max(0.0, min(bar, 1.0)) * 100:.1f}%"></span></td></tr>'
+        for c, n, m, bar in rows
     )
     _html(
         '<table class="dlv-table"><thead><tr><th>Category</th><th class="num">Assets</th>'
-        f'<th class="num">Per month (approx.)</th></tr></thead><tbody>{body}</tbody></table>'
+        '<th class="num">Per month (approx.)</th><th class="dlv-share">Spend</th></tr></thead>'
+        f'<tbody>{body}</tbody></table>'
     )
 
 
@@ -175,3 +178,74 @@ def step_list(steps: List[Tuple[str, str]], container=None) -> None:
     """Vertical scan progress: (text, state) with state in done / current / todo."""
     items = "".join(f'<li class="{state}">{escape(text)}</li>' for text, state in steps)
     _html(f'<ul class="dlv-steps">{items}</ul>', container)
+
+
+# -----------------------------------------------------------------------------
+# Guided onboarding (docs/design/onboarding-demo.md)
+# -----------------------------------------------------------------------------
+
+ONBOARDING_STEPS = [
+    ("Connect", "Gmail and your bank statement."),
+    ("Analyse", "We look for recurring payments and accounts."),
+    ("Review", "Everything your heirs need, in one overview."),
+]
+
+
+def inject_onboarding_styles(hide_stale: bool = False) -> None:
+    """`hide_stale` hides elements left over from the previous screen while a long run is still going."""
+    stale = '<style>[data-testid="stMain"] [data-stale="true"] { display: none; }</style>' if hide_stale else ""
+    _html(ONBOARDING_CSS + stale)
+
+
+def topbar() -> None:
+    """Slim bar with the wordmark; replaces the sidebar during onboarding."""
+    _html('<div class="dlv-topbar"><span class="dlv-wordmark">Digital Legacy Vault</span></div>')
+
+
+def hero(title: str, lead: Optional[str] = None, eyebrow: Optional[str] = None, size: str = "xl") -> None:
+    """VZ marketing heading: optional eyebrow label, 42px (xl) or 30px (l) title, 21px lead."""
+    eyebrow_html = f'<div class="dlv-label">{escape(eyebrow)}</div>' if eyebrow else ""
+    lead_html = f'<p class="dlv-lead">{escape(lead)}</p>' if lead else ""
+    _html(f'<div class="dlv-hero">{eyebrow_html}<h1 class="dlv-hero-title dlv-hero-title--{size}">'
+          f'{escape(title)}</h1>{lead_html}</div>')
+
+
+def step_rule(current: int) -> None:
+    """Connect -> Analyse -> Review; `current` is 1-based, 0 shows a preview with nothing active."""
+    steps = []
+    for i, (title, text) in enumerate(ONBOARDING_STEPS, start=1):
+        state = "todo" if current == 0 else "done" if i < current else "current" if i == current else "todo"
+        steps.append(
+            f'<div class="dlv-step dlv-step--{state}"><div class="dlv-step-no">{i:02d}</div>'
+            f'<div class="dlv-step-title">{title}</div><div class="dlv-step-text">{text}</div></div>'
+        )
+    preview = " dlv-journey--preview" if current == 0 else ""
+    _html(f'<div class="dlv-journey{preview}">{"".join(steps)}</div>')
+
+
+def _count(value: int) -> str:
+    """A number that counts up from 0 (CSS only); the real value stays readable for screen readers."""
+    return f'<span class="dlv-count" style="--to:{int(value)}"><span class="dlv-sr">{int(value)}</span></span>'
+
+
+def reveal(found: int, monthly_chf: float, needs_review: int, items: Sequence[Tuple[str, str]],
+           seconds: int) -> None:
+    """The magic moment: counted-up totals, the providers with their cost, and a countdown line."""
+    francs = round(monthly_chf)
+    amount = f"CHF {_count(francs)}" if francs < 1000 else escape(chf(monthly_chf))
+    noun = "account and subscription" if found == 1 else "accounts and subscriptions"
+    review = (f" {_count(needs_review)} {'needs' if needs_review == 1 else 'need'} your review."
+              if needs_review else " All of them look certain.")
+    lead = f"Together they cost about <strong>{amount}</strong> a month.{review}" if francs else review.strip()
+
+    names = "".join(
+        f'<li style="--i:{i}">{escape(name)}<span>{escape(detail)}</span></li>' for i, (name, detail) in enumerate(items)
+    )
+
+    _html(
+        '<div class="dlv-hero dlv-reveal"><div class="dlv-label">Your digital footprint</div>'
+        f'<h1 class="dlv-hero-title dlv-hero-title--xl">We found {_count(found)} {noun}.</h1>'
+        f'<p class="dlv-lead">{lead}</p>'
+        f'<ul class="dlv-reveal-grid">{names}</ul>'
+        f'<div class="dlv-countdown" style="--secs:{seconds}s" aria-hidden="true"></div></div>'
+    )

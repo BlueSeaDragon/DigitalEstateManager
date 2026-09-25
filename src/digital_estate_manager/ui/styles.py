@@ -122,6 +122,8 @@ button, a[data-testid^="stBaseLinkButton"] {{ box-shadow: none !important; }}
     color: {MUTED}; padding: 8px 16px 8px 0; border-bottom: 1px solid {RULE}; }}
 .dlv-table td {{ padding: 10px 16px 10px 0; border-bottom: 1px solid {RULE}; color: {INK}; }}
 .dlv-table .num {{ text-align: right; }}
+.dlv-table .dlv-share {{ width: 30%; padding-left: 24px; }}
+.dlv-share span {{ display: block; height: 6px; background: {NAVY}; border-radius: 1px; }}
 
 /* ---- Scan step list ---- */
 .dlv-steps {{ list-style: none; margin: 8px 0 16px 0; padding: 0; }}
@@ -150,6 +152,85 @@ div[data-testid="stDialog"] [data-testid="stColumn"] div[data-testid="stNumberIn
 div[data-testid="stDialog"] [data-testid="stColumn"] div[data-testid="stMultiSelect"] {{
     display: flex !important; flex-direction: column !important; flex: 1 1 auto !important;
     justify-content: flex-end !important; height: 100% !important;
+}}
+</style>
+"""
+
+# Only while the guided onboarding runs (docs/design/onboarding-demo.md). Sizes and the orange button and
+# CTA link follow vermoegenszentrum.ch's marketing pages (h1 42px, lead 21px, .button-orange, .cta).
+ORANGE_BUTTON = "#C95321"
+
+ONBOARDING_CSS = f"""
+<style>
+[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"] {{
+    display: none !important;
+}}
+[data-testid="stMainBlockContainer"] {{ padding-top: 24px !important; margin: 0 auto !important; }}
+.dlv-topbar {{ padding: 0 0 16px 0; border-bottom: 1px solid {RULE}; margin-bottom: 64px; }}
+
+/* ---- Hero type ---- */
+.dlv-hero {{ max-width: 780px; }}
+.dlv-hero h1.dlv-hero-title {{ font-weight: 700; color: {INK}; margin: 0 0 12px 0; padding: 0 !important;
+    letter-spacing: -0.01em; }}
+.dlv-hero h1.dlv-hero-title--xl {{ font-size: 42px !important; line-height: 1.1875; }}
+.dlv-hero h1.dlv-hero-title--l {{ font-size: 30px !important; line-height: 1.1875; }}
+.dlv-hero p.dlv-lead {{ font-size: 21px !important; line-height: 1.46; color: {MUTED}; margin: 0 0 32px 0; max-width: 720px; }}
+.dlv-lead strong {{ color: {INK}; font-weight: 700; }}
+
+/* ---- The step rule: nothing active on the landing, a stepper afterwards ---- */
+.dlv-journey--preview {{ margin-top: 80px; }}
+.dlv-journey--preview .dlv-step-title {{ color: {INK} !important; }}
+.dlv-journey {{ margin-bottom: 48px; }}
+
+/* ---- VZ orange button (one per screen) and CTA link with an orange underline ---- */
+.st-key-cta_orange button {{
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 100%), {ORANGE_BUTTON};
+    border: 1px solid {ORANGE_BUTTON}; color: #FFFFFF; padding: 10px 22px; min-height: 44px;
+}}
+.st-key-cta_orange button:hover {{ background-color: #B5481B; border-color: #B5481B; color: #FFFFFF; }}
+.st-key-cta_orange button p, .st-key-cta_link button p {{ font-weight: 700; font-size: 15px; }}
+.st-key-cta_link button {{
+    color: {INK}; padding: 0 0 2px 0; min-height: 0; border-radius: 0;
+    box-shadow: 0 2px 0 0 {ORANGE} !important;
+}}
+.st-key-cta_link button:hover {{ color: {INK}; text-decoration: none; box-shadow: 0 3px 0 0 {ORANGE} !important; }}
+
+/* ---- Source cards ---- */
+.st-key-src_gmail, .st-key-src_statement {{ padding: 24px !important; gap: 8px; }}
+.dlv-card-title {{ font-size: 18px; font-weight: 600; color: {INK}; margin: 0; }}
+
+/* ---- Magic moment: count-up, provider grid, countdown line ---- */
+@property --dlv-n {{ syntax: "<integer>"; initial-value: 0; inherits: false; }}
+.dlv-count {{
+    --dlv-n: var(--to); counter-reset: dlv-n var(--dlv-n); font-variant-numeric: tabular-nums;
+    animation: dlv-count 1.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+}}
+.dlv-count::after {{ content: counter(dlv-n); content: counter(dlv-n) / ""; }}
+@keyframes dlv-count {{ from {{ --dlv-n: 0; }} }}
+.dlv-sr {{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }}
+
+.dlv-reveal {{ max-width: none; }}
+.dlv-reveal-grid {{
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 32px; list-style: none;
+    margin: 8px 0 0 0; padding: 0; border-top: 1px solid {RULE};
+}}
+.dlv-reveal-grid li {{
+    display: flex; justify-content: space-between; gap: 16px; margin: 0; padding: 12px 0;
+    border-bottom: 1px solid {RULE}; font-size: 15px; color: {INK};
+    opacity: 0; animation: dlv-in 0.45s ease-out forwards; animation-delay: calc(1.2s + var(--i) * 60ms);
+}}
+.dlv-reveal-grid li span {{ color: {MUTED}; white-space: nowrap; font-variant-numeric: tabular-nums; }}
+@keyframes dlv-in {{ from {{ opacity: 0; transform: translateY(6px); }} to {{ opacity: 1; transform: none; }} }}
+.dlv-countdown {{ position: relative; height: 2px; background: {RULE}; margin: 40px 0 16px 0; overflow: hidden; }}
+.dlv-countdown::after {{
+    content: ""; position: absolute; inset: 0; background: {ORANGE}; transform-origin: left center;
+    transform: scaleX(0); animation: dlv-fill var(--secs) linear forwards;
+}}
+@keyframes dlv-fill {{ to {{ transform: scaleX(1); }} }}
+
+@media (prefers-reduced-motion: reduce) {{
+    .dlv-count, .dlv-reveal-grid li, .dlv-countdown::after {{ animation: none; }}
+    .dlv-reveal-grid li {{ opacity: 1; }}
 }}
 </style>
 """

@@ -1,12 +1,13 @@
 import csv
 import io
 import re
-from typing import Dict, List, Optional
+import time
+from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
 
-from digital_estate_manager.config import REPO_ROOT
+from digital_estate_manager.config import REPO_ROOT, onboarding_enabled
 from digital_estate_manager.discovery import (
     DiscoveryInputError,
     EmailConnectionError,
@@ -77,8 +78,13 @@ STATUSES = ["Active", "Pending Review", "In Progress", "Completed", "Cancelled",
 # =============================================================================
 # 1. State Management
 # =============================================================================
+# Guided onboarding (docs/design/onboarding-demo.md): landing -> connect -> analyse -> reveal -> done.
+ONBOARDING = onboarding_enabled()
+st.session_state.setdefault("onboarding", "landing" if ONBOARDING else "done")
+
 if "assets" not in st.session_state:
-    st.session_state.assets = get_default_assets()
+    # The onboarding starts empty, so the magic moment only counts what the scan found.
+    st.session_state.assets = [] if ONBOARDING else get_default_assets()
 elif len(st.session_state.assets) > 0 and isinstance(st.session_state.assets[0], dict):
     # Migrate any legacy dictionary state to typed models
     st.session_state.assets = [Asset.from_table_row(d) for d in st.session_state.assets]
@@ -96,7 +102,10 @@ def handle_oauth_redirect() -> None:
         return
     code, state, error = params.get("code"), params.get("state"), params.get("error")
     st.query_params.clear()
-    st.session_state.active_page = "Discover"
+    if st.session_state.onboarding == "done":
+        st.session_state.active_page = "Discover"
+    else:
+        st.session_state.onboarding = "connect"
 
     if error:
         st.session_state.oauth_message = ("error", f"Google sign-in was not completed ({error}). Try connecting again.")
@@ -823,10 +832,12 @@ def _step_key(message: str) -> str:
     return re.sub(r"\s*\(?\d+/\d+\)?", "", message).strip()
 
 
-def run_scan(source: str, use_llm: bool = True) -> None:
+def run_scan(source: str, use_llm: bool = True, upload=None,
+             on_success: Optional[Callable[[], None]] = None) -> None:
     """Runs the subscription finder on one source and adds new findings to the vault.
 
     `source` is "demo" (sample dataset), "gmail", or "file" (upload, plus Gmail if connected).
+    `upload` overrides the Discover page's file; `on_success` runs just before the final rerun.
     """
     st.session_state.pop("scan_llm_error", None)
     placeholder = st.empty()
@@ -850,7 +861,8 @@ def run_scan(source: str, use_llm: bool = True) -> None:
     if source == "demo":
         upload, filename, source_label = DEMO_DATASET.read_bytes(), DEMO_DATASET.name, "Demo dataset"
     elif source == "file":
-        upload, filename, source_label = st.session_state.get("disc_page_file_uploader"), None, "Uploaded file"
+        upload = upload or st.session_state.get("disc_page_file_uploader")
+        filename, source_label = None, "Uploaded file"
     else:
         upload, filename, source_label = None, None, "Gmail"
 
@@ -898,12 +910,157 @@ def run_scan(source: str, use_llm: bool = True) -> None:
         "notes": result.notes or "",
         "steps": [s[0] for s in steps if _step_key(s[0]) != "Done"],
     }
+    if on_success:
+        on_success()
     st.rerun()
 
 
 def queue_demo_scan() -> None:
     st.session_state.pending_scan = "demo"
     st.session_state.active_page = "Discover"
+
+
+# =============================================================================
+# GUIDED ONBOARDING (only with DLV_ONBOARDING=1)
+# =============================================================================
+REVEAL_SECONDS = 7
+SIGN_IN_URL_MAX_AGE = 540  # the server forgets a started Google login after 10 minutes
+
+
+def set_onboarding(step: str) -> None:
+    st.session_state.onboarding = step
+    st.session_state.pop("onb_reveal_shown", None)
+
+
+def start_analysis() -> None:
+    # Keep the file: Streamlit drops an uploader's value once the widget is no longer drawn.
+    st.session_state.onb_file = st.session_state.get("onb_statement")
+    set_onboarding("analyse")
+
+
+def gmail_sign_in_url():
+    """One Google sign-in link per session, renewed before the server forgets it.
+    Returns (url, None) or (None, error message)."""
+    cached = st.session_state.get("onb_sign_in")
+    if cached and time.time() - cached[1] < SIGN_IN_URL_MAX_AGE:
+        return cached[0], None
+    resp = connect_email_provider(provider="gmail")
+    if not resp["success"]:
+        return None, resp["message"]
+    st.session_state.onb_sign_in = (resp["auth_url"], time.time())
+    return resp["auth_url"], None
+
+
+def onboarding_landing() -> None:
+    ui.hero(
+        "Know what you leave behind.",
+        "Find your digital accounts and subscriptions so your heirs don't have to.",
+        eyebrow="Digital estate planning",
+    )
+    with st.container(key="cta_orange"):
+        st.button("Get started", type="primary", key="onb_start", on_click=set_onboarding, args=("connect",))
+    ui.muted("Takes about a minute. Read-only access, nothing is stored.")
+    ui.step_rule(0)
+
+
+def onboarding_connect() -> None:
+    ui.step_rule(1)
+    ui.hero("Connect your sources", "The more sources you add, the more complete the picture.", size="l")
+    oauth_message = st.session_state.pop("oauth_message", None)
+    if oauth_message:
+        kind, text = oauth_message
+        ui.notice(text, "green" if kind == "success" else "red")
+
+    connected = bool(st.session_state.get("gmail_credentials"))
+    gmail_col, bank_col = st.columns(2, gap="medium")
+    with gmail_col, st.container(border=True, height="stretch", key="src_gmail"):
+        ui.section_label("Step 1 · Email", first=True)
+        st.subheader("Gmail", anchor=False)
+        ui.muted("Read-only access to billing emails. They are processed in memory and never stored.")
+        if connected:
+            with st.container(horizontal=True, vertical_alignment="center"):
+                st.markdown(ui.status_label("Connected", "green"), unsafe_allow_html=True, width="content")
+                st.button("Disconnect", type="tertiary", key="onb_disconnect",
+                          on_click=lambda: st.session_state.pop("gmail_credentials", None))
+        else:
+            url, error = gmail_sign_in_url()
+            if url:
+                st.link_button("Connect Gmail", url, icon=":material/mail:")
+                st.caption("Google opens in a new tab and brings you back here.")
+            else:
+                ui.notice(error, "red")
+
+    with bank_col, st.container(border=True, height="stretch", key="src_statement"):
+        ui.section_label("Step 2 · Bank", first=True)
+        st.subheader("Bank statement", anchor=False)
+        ui.muted("A transaction export from your bank, as JSON or JSONL. It is read in memory only.")
+        statement = st.file_uploader("Bank statement", type=["jsonl", "json"], key="onb_statement",
+                                     label_visibility="collapsed")
+
+    ready = (["Gmail"] if connected else []) + ([statement.name] if statement is not None else [])
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.button("Analyse", type="primary", key="onb_analyse", disabled=not ready, on_click=start_analysis)
+        st.caption(f"Ready: {' and '.join(ready)}" if ready else "Connect Gmail or upload a statement to continue.")
+
+
+def onboarding_analyse() -> None:
+    ui.step_rule(2)
+    ui.hero("Analysing your footprint", "We look for recurring payments and the accounts behind them.", size="l")
+    statement = st.session_state.get("onb_file")
+    source = "file" if statement is not None else "gmail"
+
+    llm_error = st.session_state.get("scan_llm_error")
+    if llm_error:
+        ui.notice(f"The AI model is not configured ({llm_error[1]}). You can analyse with rules only; "
+                  "names and confidence are less precise.", "amber")
+        with st.container(horizontal=True, vertical_alignment="center"):
+            rules_only = st.button("Analyse with rules only", type="primary", key="onb_rules_only")
+            st.button("Back to sources", type="tertiary", key="onb_back_llm", on_click=set_onboarding, args=("connect",))
+        if rules_only:
+            run_scan(source, use_llm=False, upload=statement, on_success=lambda: set_onboarding("reveal"))
+        return
+
+    run_scan(source, upload=statement, on_success=lambda: set_onboarding("reveal"))
+    # Only reached when the scan failed; run_scan has said why.
+    st.button("Back to sources", key="onb_back", on_click=set_onboarding, args=("connect",))
+
+
+def onboarding_reveal() -> None:
+    ui.step_rule(3)
+    found = [a for a in st.session_state.assets if a.status != "Removed"]
+    monthly = calculate_metrics(found)["active_monthly_spend_chf"]
+    needs_review = sum(1 for a in found if a.review_label == "Needs review")
+    # Largest monthly cost first: the finder files nearly everything under Subscriptions, so grouping by
+    # category would leave one long column.
+    costs = {a.id: monthly_cost_chf(a) for a in found}
+    ranked = sorted(found, key=lambda a: (-costs[a.id], display_name(a).lower()))
+    items = [(display_name(a), f"{chf(costs[a.id])} / mo" if costs[a.id] else categories_display(a)) for a in ranked]
+    ui.reveal(len(found), monthly, needs_review, items, REVEAL_SECONDS)
+    with st.container(key="cta_link"):
+        st.button("Open my dashboard", type="tertiary", key="onb_open", on_click=set_onboarding, args=("done",))
+    advance_after_reveal()
+
+
+@st.fragment(run_every=REVEAL_SECONDS)
+def advance_after_reveal() -> None:
+    """Opens the dashboard on the fragment's first timed rerun, when the countdown line is full."""
+    if st.session_state.get("onb_reveal_shown"):
+        set_onboarding("done")
+        st.rerun()
+    st.session_state.onb_reveal_shown = True
+
+
+if st.session_state.onboarding != "done":
+    # While the scan runs, the Connect screen's leftovers would otherwise stay visible.
+    ui.inject_onboarding_styles(hide_stale=st.session_state.onboarding == "analyse")
+    ui.topbar()
+    {
+        "landing": onboarding_landing,
+        "connect": onboarding_connect,
+        "analyse": onboarding_analyse,
+        "reveal": onboarding_reveal,
+    }.get(st.session_state.onboarding, onboarding_landing)()
+    st.stop()
 
 
 # =============================================================================
@@ -952,8 +1109,10 @@ if page == "Overview":
             members = [a for a in active_pool if matches_category(a, category)]
             if members:
                 monthly = sum(monthly_cost_chf(a) for a in members if a.status not in CLOSED)
-                rows.append((category, len(members), chf(monthly) if monthly else "—"))
-        ui.category_table(rows)
+                rows.append((category, len(members), monthly))
+        # Bars are relative to the largest category: categories overlap, so shares of a total would not add up.
+        largest = max((m for _, _, m in rows), default=0.0)
+        ui.category_table([(c, n, chf(m) if m else "—", m / largest if largest else 0.0) for c, n, m in rows])
         st.caption("Assets with several categories are counted in each. Totals use fixed exchange rates.")
 
         ui.section_label("Next steps")
