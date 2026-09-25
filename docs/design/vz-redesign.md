@@ -1,10 +1,10 @@
-# VZ-inspired redesign of Digital Legacy Vault
+# VZ-inspired redesign of Digital Estate Manager
 
 Status: design approved, 2026-09-24. Branch: `feat/vz-redesign`.
 
 ## 1. Understanding summary
 
-- **What:** a two-phase redesign of the Streamlit app *Digital Legacy Vault*. Phase 1 is a visual
+- **What:** a two-phase redesign of the Streamlit app *Digital Estate Manager*. Phase 1 is a visual
   overhaul of the existing UI; Phase 2 adds a pitch flow: Problem → Scan → Discovery → Evidence → Action.
 - **Why:** to pitch the product to VZ VermögensZentrum as something that already looks at home in their
   ecosystem. We borrow VZ's design language; we do not clone their brand.
