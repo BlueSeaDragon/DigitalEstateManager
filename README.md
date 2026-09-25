@@ -21,7 +21,7 @@ AI-powered digital asset discovery and post-mortem executor platform.
    > `pip install -e ./subscription_finder` once. Otherwise discovery shows
    > "The subscription finder is not installed."
 
-3. **Configure Gmail and the AI model** (optional; without them, upload a JSONL transaction file and run rules-only):
+3. **Configure Gmail and the AI model** (optional; without them, scan the demo dataset or a JSONL transaction file with rules only):
    - Put the Google OAuth **Web application** client JSON at `config/credentials_web.json` (gitignored), with
      `http://localhost:8501` as an authorized redirect URI. The CLI keeps using its own desktop client.
      - The file is **not in the repository**. Ask the project owner for it, or create your own in
@@ -36,6 +36,9 @@ AI-powered digital asset discovery and post-mortem executor platform.
    ```bash
    streamlit run app.py
    ```
+   *Overview → Scan my digital footprint* scans `samples/demo_transactions.jsonl` (a fictional Zurich resident).
+   The finder judges "active" against today's date, so regenerate it before a demo:
+   `python samples/make_demo_transactions.py`. The UI design is described in `docs/design/vz-redesign.md`.
 
 ---
 
@@ -50,6 +53,8 @@ DigitalEstateManager/
 │       ├── models/                 # Shared Pydantic data schemas
 │       │   └── schemas.py          # Asset, PolicyGuidance, DiscoveryResult
 │       ├── config.py               # Repo-rooted paths & env (Google web client, redirect URI)
+│       ├── currency.py             # CHF formatting and the fixed demo FX table for totals
+│       ├── ui/                     # Presentation only: styles.py (CSS), format.py, components.py
 │       ├── discovery/              # Teammate 2: AI extraction & statement ingestion
 │       │   ├── email_connector.py  # Gmail OAuth: connect_email_provider / complete_email_connection
 │       │   ├── extractor.py        # parse_and_extract(): runs the subscription finder
@@ -58,7 +63,7 @@ DigitalEstateManager/
 │       │   ├── rules.py            # Platform rules (Spotify, Google, Coinbase, etc.)
 │       │   └── generator.py        # Legal notification & email draft generator
 │       └── vault/                  # Storage & metrics utilities
-│           └── storage.py          # calculate_metrics() & fallback asset loader
+│           └── storage.py          # calculate_metrics() (in CHF) & fallback asset loader
 ├── subscription_finder/            # Standalone package: detects paid subscriptions (Gmail + transactions)
 ├── config/                         # Local OAuth client secrets (gitignored)
 ├── app.py                          # Teammate 1: Streamlit UI

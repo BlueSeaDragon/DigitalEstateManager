@@ -1,6 +1,8 @@
 """Storage and Estate Metrics Helper."""
 
 from typing import Any, Dict, List
+
+from digital_estate_manager.currency import chf, to_chf
 from digital_estate_manager.models.schemas import (
     Asset,
     CancelPolicy,
@@ -28,6 +30,7 @@ def get_default_assets() -> List[Asset]:
             death_policy=spot_death,
             cancel_policy=spot_cancel,
             asset_info=SubscriptionAssetInfo(
+                currency="CHF",
                 cost_monthly=10.99,
                 plan_tier="Premium Individual",
                 billing_cycle="monthly",
@@ -45,6 +48,7 @@ def get_default_assets() -> List[Asset]:
             death_policy=spot_death2,
             cancel_policy=spot_cancel2,
             asset_info=SubscriptionAssetInfo(
+                currency="CHF",
                 cost_monthly=16.99,
                 plan_tier="Premium Family",
                 billing_cycle="monthly",
@@ -69,6 +73,7 @@ def get_default_assets() -> List[Asset]:
                     data_types=["Tax Documents", "Family Photos", "Legal Contracts"],
                 ),
                 SubscriptionAssetInfo(
+                    currency="CHF",
                     cost_monthly=1.99,
                     plan_tier="Google One 100 GB Plan",
                     billing_cycle="monthly",
@@ -88,6 +93,7 @@ def get_default_assets() -> List[Asset]:
             cancel_policy=cb_cancel,
             asset_infos=[
                 FinancialAssetInfo(
+                    currency="CHF",
                     institution_type="crypto_exchange",
                     approximate_balance=12450.00,
                     is_custodial=True,
@@ -95,6 +101,7 @@ def get_default_assets() -> List[Asset]:
                     account_number_hint="Vault-ETH/BTC",
                 ),
                 SubscriptionAssetInfo(
+                    currency="CHF",
                     cost_monthly=29.99,
                     plan_tier="Coinbase One (Zero-Fee Trading)",
                     billing_cycle="monthly",
@@ -135,6 +142,7 @@ def get_default_assets() -> List[Asset]:
                     has_legacy_contact_set=False,
                 ),
                 SubscriptionAssetInfo(
+                    currency="CHF",
                     cost_monthly=39.99,
                     plan_tier="Premium Career",
                     billing_cycle="monthly",
@@ -149,6 +157,19 @@ def get_default_assets() -> List[Asset]:
     ]
 
 
+def monthly_cost_chf(asset: Asset) -> float:
+    """Monthly recurring cost in CHF (approx.), converting each subscription from its own currency.
+
+    Amounts in currencies missing from the FX table are left out.
+    """
+    total = 0.0
+    for info in asset.asset_infos:
+        converted = to_chf(info.get_monthly_cost(), getattr(info, "currency", None))
+        if converted:
+            total += converted
+    return round(total, 2)
+
+
 def calculate_metrics(assets: List[Asset]) -> Dict[str, Any]:
     """Computes estate overview statistics."""
     # Active accounts (excluding cancelled, removed, and wrongly attributed)
@@ -161,16 +182,16 @@ def calculate_metrics(assets: List[Asset]) -> Dict[str, Any]:
     total_services = len(valid_estate_assets)
     unique_providers = len({f"{a.service.lower()}|{a.service_address.lower()}" for a in valid_estate_assets})
 
-    # Active monthly recurring drain
-    active_monthly_spend = sum(
-        a.cost_monthly for a in active_services
-        if a.cost_monthly
-    )
+    # Active monthly recurring drain, in CHF (rows can be in different currencies)
+    active_monthly_spend = round(sum(monthly_cost_chf(a) for a in active_services), 2)
 
     # Monthly drain prevented (cancelled items or flagged for cancellation, excluding removed)
-    drain_prevented = sum(
-        a.cost_monthly for a in valid_estate_assets
-        if a.cost_monthly and (a.status == "Cancelled" or "cancel" in a.cancel_policy.action_name.lower())
+    drain_prevented = round(
+        sum(
+            monthly_cost_chf(a) for a in valid_estate_assets
+            if a.status == "Cancelled" or "cancel" in a.cancel_policy.action_name.lower()
+        ),
+        2,
     )
 
     critical_recoveries = [
@@ -187,8 +208,10 @@ def calculate_metrics(assets: List[Asset]) -> Dict[str, Any]:
         "cancelled_count": len(cancelled_services),
         "removed_count": len(removed_services),
         "wrongly_attributed_count": len(wrongly_attributed_services),
-        "active_monthly_spend": f"${active_monthly_spend:.2f}",
-        "monthly_drain_prevented": f"${drain_prevented:.2f}" if drain_prevented > 0 else "$0.00",
+        "active_monthly_spend_chf": active_monthly_spend,
+        "monthly_drain_prevented_chf": drain_prevented,
+        "active_monthly_spend": chf(active_monthly_spend),
+        "monthly_drain_prevented": chf(drain_prevented),
         "critical_recovery_count": len(critical_recoveries),
         "critical_services_summary": f"{len(critical_recoveries)} ({', '.join(a.service for a in critical_recoveries)})"
         if critical_recoveries

@@ -365,6 +365,20 @@ class CancelPolicy(BaseModel):
 # 4. Asset Model (Core Aggregate)
 # =============================================================================
 
+class EvidenceItem(BaseModel):
+    """One observation that supports a discovered asset (a bank transaction or a billing email)."""
+    date: str = Field(..., description="ISO date of the charge or email")
+    kind: Literal["transaction", "email"] = Field(default="transaction")
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    description: str = Field(default="", description="Bank description or email subject")
+    source: str = Field(default="", description="File name or mailbox the observation came from")
+
+
+ConfidenceLevel = Literal["low", "medium", "high"]
+ReviewLabel = Literal["Confirmed", "Likely", "Needs review"]
+
+
 AssetStatus = Literal[
     "Active",
     "Pending Review",
@@ -414,6 +428,11 @@ class Asset(BaseModel):
         default=True,
         description="Whether the owner has checked this asset themselves (False for automatically discovered assets)",
     )
+
+    # Discovery (filled by the subscription adapter; empty for manually added assets)
+    confidence: Optional[ConfidenceLevel] = Field(default=None, description="Finder confidence level")
+    confidence_reasons: List[str] = Field(default_factory=list, description="Why the finder is (not) sure")
+    evidence: List[EvidenceItem] = Field(default_factory=list, description="Observations behind the finding")
 
     @model_validator(mode="before")
     @classmethod
@@ -581,6 +600,16 @@ class Asset(BaseModel):
         if self.asset_info:
             return self.asset_info.get_cost_display()
         return "N/A"
+
+    @property
+    def review_label(self) -> ReviewLabel:
+        """Confirmed = checked by the owner; Likely = high finder confidence;
+        Needs review = medium/low confidence or possibly cancelled."""
+        if self.user_verified:
+            return "Confirmed"
+        if self.confidence == "high" and self.status != "Pending Review":
+            return "Likely"
+        return "Needs review"
 
     @property
     def action(self) -> str:
