@@ -27,7 +27,7 @@ def inject_executor_styles() -> None:
 
 def wordmark(caption: str) -> None:
     _html(
-        '<div class="dlv-wordmark">Digital Legacy<br>Manager</div>'
+        '<div class="dlv-wordmark">Digital Estate<br>Manager</div>'
         f'<div class="dlv-wordmark-caption">{escape(caption)}</div>',
         st.sidebar,
     )
@@ -199,7 +199,7 @@ def inject_onboarding_styles(hide_stale: bool = False) -> None:
 
 def topbar() -> None:
     """Slim bar with the wordmark; replaces the sidebar during onboarding."""
-    _html('<div class="dlv-topbar"><span class="dlv-wordmark">Digital Legacy Manager</span></div>')
+    _html('<div class="dlv-topbar"><span class="dlv-wordmark">Digital Estate Manager</span></div>')
 
 
 def hero(title: str, lead: Optional[str] = None, eyebrow: Optional[str] = None, size: str = "xl") -> None:
