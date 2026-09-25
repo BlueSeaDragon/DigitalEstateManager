@@ -947,7 +947,6 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
     facts["Responsible heir"] = asset.heir
     if asset.wish:
         facts["Owner's wish"] = asset.wish
-    facts["Action"] = cancel_pol.action_name
     ui.definition_list(facts)
 
     render_policy_summary(death_pol)

@@ -45,3 +45,14 @@ def test_other_shows_a_short_text_box_and_saves_it(owner_card):
 def test_table_view_still_renders(owner_card):
     next(t for t in owner_card.toggle if t.label == "Table view").set_value(True).run()
     assert not owner_card.exception
+
+
+def test_executor_details_have_no_generated_action_line(tmp_path, monkeypatch):
+    monkeypatch.setattr(storage, "WISH_FILE", tmp_path / "wishes.json")
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    at.sidebar.radio[0].set_value("Assets").run()
+    at.session_state["role"] = "Executor"
+    at.run()
+    next(b for b in at.button if b.label == "Details").click().run()
+    assert not at.exception
+    assert "<dt>Action</dt>" not in " ".join(m.value for m in at.markdown)
