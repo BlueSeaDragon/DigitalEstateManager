@@ -55,12 +55,65 @@ def test_email_channel_maps_to_cancel_policy():
     assert cancel.action_payload["mailing_address"] == EMAIL_RAW["mailing_address"]
 
 
-def test_after_death_is_disabled():
-    """Posthumous policies come from the legacy policy crawler, not from this engine."""
-    assert typing.get_args(rag_engine.Mode) == ("during_life",)
+AFTER_DEATH_RAW = {
+    "notice_period": "Immediate (upon notification of death)",
+    "primary_channel": "email",
+    "channel_instructions": ["Send the letter to support@swisscom.ch", "Attach the Todesurkunde"],
+    "portal_url": "https://www.swisscom.ch/de/privatkunden/hilfe.html",
+    "contact_email": "support@swisscom.ch",
+    "required_docs": ["Todesurkunde (Death Certificate)"],
+    "has_mourning_portal": True,
+    "mourning_portal_url": "https://www.swisscom.ch/de/todesfall",
+}
+
+
+def test_after_death_maps_to_schemas_with_swiss_documents():
+    death, cancel = rag_engine.policies_from_rag(AFTER_DEATH_RAW, "Swisscom", "inOne", "after_death")
+
+    assert typing.get_args(rag_engine.Mode) == ("during_life", "after_death")
+    assert cancel.execution_method == "email_notice"
+    assert cancel.target_url == "https://www.swisscom.ch/de/todesfall"
+    assert cancel.required_documents == ["Todesurkunde (Death Certificate)", "Erbenschein"]
+    assert cancel.action_payload["legal_basis"] == "OR Art. 405"
+    assert cancel.action_payload["mode"] == "after_death"
+    assert "OR Art. 405" in death.summary
+    assert death.official_portal_url == "https://www.swisscom.ch/de/todesfall"
+
+
+def test_after_death_adds_missing_documents_and_keeps_alternate_spellings():
+    raw = {"required_docs": ["Erbschein", "Kopie ID"], "primary_channel": "registered_letter"}
+    _, cancel = rag_engine.policies_from_rag(raw, "SBB", mode="after_death")
+    assert cancel.required_documents == ["Erbschein", "Kopie ID", "Todesurkunde (Death Certificate)"]
+
+
+def test_after_death_mourning_portal_must_come_from_the_search_results():
+    raw = dict(AFTER_DEATH_RAW, _sources=["Title: Hilfe\nSnippet: support@swisscom.ch\nURL: https://www.swisscom.ch/de/privatkunden/hilfe.html"])
+    _, cancel = rag_engine.policies_from_rag(raw, "Swisscom", mode="after_death")
+    assert cancel.action_payload["mourning_portal_url"] is None
+    assert cancel.target_url == "https://www.swisscom.ch/de/privatkunden/hilfe.html"
+
+
+def test_during_life_has_no_after_death_rules():
     _, cancel = rag_engine.policies_from_rag(EMAIL_RAW, "Swisscom")
     assert "legal_basis" not in cancel.action_payload
     assert "Erbenschein" not in cancel.required_documents
+
+
+def test_after_death_letter_is_written_by_the_executor_for_the_deceased(monkeypatch):
+    monkeypatch.setattr(rag_engine, "SWISSCOM_API_KEY", "test-key")
+    prompts = []
+
+    def create(**kwargs):
+        prompts.append(kwargs["messages"][1]["content"])
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Betreff: Kündigung"))])
+
+    monkeypatch.setattr(rag_engine.client.chat.completions, "create", create)
+    _, cancel = rag_engine.policies_from_rag(AFTER_DEATH_RAW, "Swisscom", mode="after_death")
+    rag_engine.generate_cancellation_letter(
+        "Swisscom", "inOne", "Anna Muster", "123", "after_death", cancel, deceased_name="Hans Muster"
+    )
+    assert "Deceased account holder: Hans Muster" in prompts[0]
+    assert "OR Art. 405" in prompts[0]
 
 
 SOURCES = [

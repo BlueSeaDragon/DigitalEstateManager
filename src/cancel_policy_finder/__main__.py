@@ -25,6 +25,7 @@ class CancelActionRequest(BaseModel):
     contract_id: str
     mode: Mode = "during_life"
     service_address: str = ""
+    deceased_name: str = ""  # after_death: person_name is the executor writing for the deceased
 
 
 def _safe_filename(*parts: str) -> str:
@@ -65,7 +66,9 @@ def generate_cancel_docs(data: CancelActionRequest):
             person_name=data.person_name,
             contract_id=data.contract_id,
             mode=data.mode,
-            cancel_policy=cancel_policy
+            cancel_policy=cancel_policy,
+            death_policy=death_policy,
+            deceased_name=data.deceased_name or None
         )
     except CancellationEngineError as e:
         raise HTTPException(status_code=504, detail=str(e))
