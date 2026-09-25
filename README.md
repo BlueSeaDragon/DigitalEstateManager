@@ -1,144 +1,59 @@
-# Digital Estate Manager (DEM)
+# Digital Estate Manager (DEM): Pitch
 
-AI-powered digital asset discovery and post-mortem executor platform.
+## Introduction
 
----
+Digital services permeate every aspect of our lives, from entertainment (Netflix, Crunchyroll, Spotify) and productivity (Microsoft, Google, Slack) to AI subscriptions (OpenAI, Claude, Gemini). Many of us manage these accounts with tools like password managers, but what happens to them after we die? Estate planning has long covered bank accounts, property and insurance; digital accounts are the missing piece. Keeping track of one's own subscriptions is hard enough; mourning relatives must scramble through loose bank statements and emails to back up data and cancel unwanted services before further charges arise. Our Digital Estate Manager (DEM) closes this gap in legal digital-legacy handling in a private, simple and legally informative way. It is built for VZ, its legal and estate-planning consultants, and their clients.
 
-## 🚀 Setup & Installation
+## Feature 1: Privacy and safety
 
-1. **Create and activate the conda environment**:
-   ```bash
-   conda create -n DEM python=3.12
-   conda activate DEM
-   ```
+DEM is a two-key system that keeps the client's data fully private and shares it only with heirs, legal advisors or other authorised persons. DEM is designed to be hosted by VZ VermögensZentrum, an independent financial and estate-planning consultancy [1], so the tool complements VZ's services: digital asset overview and estate-planning advice during life, and will/execution assistance after death, for both VZ's advisors and their clients.
 
-2. **Install dependencies and register the local packages in editable mode** (the subscription finder is installed from its local folder):
-   ```bash
-   pip install -e ./subscription_finder
-   pip install -e .
-   ```
-   > **Already set up before the subscription finder was added?** After pulling, run
-   > `pip install -e ./subscription_finder` once. Otherwise discovery shows
-   > "The subscription finder is not installed."
+When an account is created, two private keys are generated. One is held only by the owner. The other is safely stored in VZ's safe or vault and becomes accessible only once the owner has died, as authorised beforehand by binding contract during asset planning with their consultant. The executor can then act on the client's behalf, for example by passing certain data to heirs.
 
-3. **Configure Gmail and the AI model** (optional; without them, scan the demo dataset or a JSONL transaction file with rules only):
-   - Put the Google OAuth **Web application** client JSON at `config/credentials_web.json` (gitignored), with
-     `http://localhost:8501` as an authorized redirect URI. The CLI keeps using its own desktop client.
-     - The file is **not in the repository**. Ask the project owner for it, or create your own in
-       [Google Cloud Console](https://console.cloud.google.com/apis/credentials): enable the Gmail API, then
-       *Create credentials → OAuth client ID → Web application*, add the redirect URI above and download the JSON.
-     - While the OAuth app is in **Testing** mode, only Google accounts listed as **test users** on the
-       OAuth consent screen can connect; everyone else gets an "access blocked" error from Google.
-       Ask the project owner to add your account.
-   - Copy `.env.example` to `.env` and set `SWISSCOM_API_KEY` / `SWISSCOM_BASE_URL`.
+This way, privacy-concerned clients who do not want their consultants to track their data over the years can use the app in a fully private environment until they choose to release information. This should encourage regular digital asset monitoring, which reduces the post-mortem hassle of searching through documents for digital footprints.
 
-4. **Run the Streamlit application** (from the repository root):
-   ```bash
-   streamlit run app.py
-   ```
-   *Overview → Scan my digital footprint* scans `samples/demo_transactions.jsonl` (a fictional Zurich resident).
-   The finder judges "active" against today's date, so regenerate it before a demo:
-   `python samples/make_demo_transactions.py`. The UI design is described in `docs/design/vz-redesign.md`.
+DEM also allows users to enter subscriptions and accounts manually, if the agent misreads something, entries are missed, or the client is unwilling to link their email or provide bank statements. DEM respects the level of exposure each client is comfortable with.
 
----
+## Feature 2: Easy extraction of accounts and subscriptions from email and bank statements
 
-## 📁 Project Architecture & Team Division
+Extraction is authorised by clients, or by the legal representatives of deceased persons.
 
-The codebase is organized as a decoupled, modular Python package under `src/digital_estate_manager/`:
+DEM uses Apertus as the AI brain for extraction of accounts and subscriptions from emails and bank statements, looking for regular transactions or emails that suggest account sign-ups. The client and their advisor obtain a clean list of accounts and subscriptions (called Assets), so they can make better-informed decisions for the future.
 
-```text
-DigitalEstateManager/
-├── src/
-│   └── digital_estate_manager/
-│       ├── models/                 # Shared Pydantic data schemas
-│       │   └── schemas.py          # Asset, PolicyGuidance, DiscoveryResult
-│       ├── config.py               # Repo-rooted paths & env (Google web client, redirect URI)
-│       ├── currency.py             # CHF formatting and the fixed demo FX table for totals
-│       ├── ui/                     # Presentation only: styles.py (CSS), format.py, components.py
-│       ├── discovery/              # Teammate 2: AI extraction & statement ingestion
-│       │   ├── email_connector.py  # Gmail OAuth: connect_email_provider / complete_email_connection
-│       │   ├── extractor.py        # parse_and_extract(): runs the subscription finder
-│       │   └── subscription_adapter.py  # finder subscriptions.json -> DiscoveryResult / Asset
-│       ├── policies/               # Teammate 3: Company policies & legal generation
-│       │   ├── rules.py            # Platform rules (Spotify, Google, Coinbase, etc.)
-│       │   └── generator.py        # Legal notification & email draft generator
-│       └── vault/                  # Storage & metrics utilities
-│           └── storage.py          # calculate_metrics() (in CHF) & fallback asset loader
-├── subscription_finder/            # Standalone package: detects paid subscriptions (Gmail + transactions)
-├── config/                         # Local OAuth client secrets (gitignored)
-├── app.py                          # Teammate 1: Streamlit UI
-├── pyproject.toml
-└── README.md
-```
+This feature is also useful for relatives of deceased persons. As long as they have access to email or statements, DEM can extract meaningful information about the person's digital footprint, sparing families and legal teams the time of going through records manually.
 
-### Team Member Workflows
+## Feature 3: Legacy an Cancellation policy gathering
 
-- **Teammate 1 (Frontend / Streamlit)**:
-  - Works on [app.py](file:///c:/Users/oarevian/OneDrive%20-%20Arev%20Finances/Documents/DEM/DigitalEstateManager/app.py).
-  - Imports domain models and services directly from `digital_estate_manager`.
+DEM is structured with legacy in mind. Among the most cumbersome tasks is finding out what happens to an asset after death: what a provider does with it, what information they ask for, and what procedure to follow. 
 
-- **Teammate 2 (Document Ingestion & AI Discovery)**:
-  - Works in [src/digital_estate_manager/discovery/extractor.py](file:///c:/Users/oarevian/OneDrive%20-%20Arev%20Finances/Documents/DEM/DigitalEstateManager/src/digital_estate_manager/discovery/extractor.py).
-  - Replaces prototype logic with OCR / PDF parsing (e.g. `pypdf`, `pdfplumber`) and LLM extraction.
-  - Contract: Returns a `DiscoveryResult` with a list of `Asset` models.
+DEM helps clients and legal consultants find this information, based on each provider's policy crawled directly from its official website. For each provider (e.g. Google), DEM shows a short summary and a link to the official legacy policy page. Every summary links to its source page and carries a "checked" date, so advisors can easily verify it. The summaries are machine-generated information, not legal advice, and should be verified at the source.
 
-- **Teammate 3 (Policies & Legal Guidance)**:
-  - Works in [src/digital_estate_manager/policies/rules.py](file:///c:/Users/oarevian/OneDrive%20-%20Arev%20Finances/Documents/DEM/DigitalEstateManager/src/digital_estate_manager/policies/rules.py) and [generator.py](file:///c:/Users/oarevian/OneDrive%20-%20Arev%20Finances/Documents/DEM/DigitalEstateManager/src/digital_estate_manager/policies/generator.py).
-  - Adds platform-specific requirements, document checklists, and email generation templates.
+DEM also helps find cancellation policies: it informs the client or executor of their options, such as how to delete an account or cancel an unwanted subscription. This is especially helpful for an executor who is instructed to mass-delete accounts. As companies handle subscription and account termination differently, collecting this information in one place greatly improves efficiency. In addition, DEM guides the executor through cancellation and legacy recovery with step-by-step guides—for example, by autogenerating cancellation emails.
 
----
+This supports legal representatives after death, making it much easier to confirm which documents and steps a provider requires and carry them out, backed by AI-generated summaries that link back to the source. 
 
-## 🔎 Legacy Policy Crawler (`src/legacy_policy_crawler/`)
+To further help legal representatives carry out the client's will, each account has a "My Wish" field (for example: cancel, deactivate, or pass to heir), which the executor sees right next to the provider's policy. This lets clients record their wishes for their digital accounts and data based on the information provided by DEM.
 
-For a company website it finds the page that states what happens to an account or subscription after the holder's death, and saves the link, a short summary and a few tick boxes in `data/legacy_policies.json`. It only reads public web pages: it never logs in to accounts and does not cancel anything (that is a separate crawler). The agent runs on Apertus 1.5 70B (Swisscom AI Platform).
+## Feature 4: Ethical and privacy-aware agentic AI
 
-**Setup** (after pulling, run `pip install -e .` again: new dependencies `httpx`, `beautifulsoup4`, `ddgs`)
+The legacy-policy crawler is an agent powered by Apertus 1.5, the fully open Swiss language model built by EPFL, ETH Zurich and CSCS [2][3]. We access it through Swisscom, whose Swiss AI Platform keeps customer data in Switzerland [4]. Apertus was developed with due consideration to Swiss data protection and copyright laws and the transparency obligations of the EU AI Act [3].
 
-1. Copy `.env.example` to `.env` (git-ignored) and paste your Swisscom token: `SWISSCOM_API_KEY=<token>`. Never commit or share it. The variables are shared with the subscription finder, so both use one Apertus service and one 5 requests/s quota. `SWISSCOM_BASE_URL` may stay empty: the crawler then uses the Swiss AI Weeks endpoint (`.../products/swiss-ai-weeks/apertus-1.5-70b/v1`). A key only works on the product URL it belongs to, so set it if yours differs. `SWISSCOM_MODEL` is optional.
-2. Check token, URL and model: `python -m legacy_policy_crawler.llm --ping`
+The Legacy policy and cancellation policies crawlers only ever reads public company web pages, so DEM keeps potentially sensitive client data away from big AI companies, which some clients may feel apprehensive about. It uses official pages only, respects `robots.txt` [5] and never logs in to accounts. Because Apertus is multilingual [3], it also handles Swiss providers' non-English pages: for example, a German Swisscom help page.
 
-> Windows on ARM: the x64 Miniconda runs fine under emulation. To avoid Anaconda's channel licence prompt, create the environment with `conda create -n DEM -c conda-forge --override-channels python=3.12 pip`.
+## Feature 5: Easy integration into the VZ Financial Portal
 
-**Use**
+DEM is a standalone app that fits the VZ ecosystem. VZ clients already use the VZ Financial Portal on the web and as an iOS and Android app, with an overview of their banking and pension data, insurance and mortgages behind a secured login, with data kept in Switzerland [6][7]. DEM adds the missing digital layer: subscriptions and online accounts next to the assets the portal already shows.
 
-```bash
-python -m legacy_policy_crawler google.com spotify.com   # JSON on stdout, saved in data/legacy_policies.json
-python -m legacy_policy_crawler netflix.com --trace      # also show the agent's steps (stderr)
-python -m legacy_policy_crawler netflix.com --refresh    # crawl again although the website is saved
-pytest -q                                                # offline tests, no token needed
-```
+Two existing VZ features are a natural fit. VZ Safe already lets clients store documents such as a will or inheritance agreement digitally [1][6]; it could hold the second key or the executor's release documents. The portal's login could also serve as the single sign-in for DEM, so clients do not need another account. Data location matches too: the portal keeps data in Switzerland [6], and so does the Apertus model behind DEM [4].
 
-```python
-from legacy_policy_crawler import lookup_legacy_policy
+Technically, DEM keeps its logic (asset models, policies, extraction) in a separate Python package, with the user interface as a thin layer on top. VZ's developers can therefore reuse the logic behind their own portal screens, or embed DEM as a new section, without rebuilding it.
 
-record = lookup_legacy_policy("https://spotify.com")  # 10-40 s the first time, instant afterwards
-```
+## References
 
-**Output** (`data/legacy_policies.json`, one record per website):
-
-```json
-{
-  "website": "acme.com",
-  "legacy_policy_url": "https://help.acme.com/deceased-users",
-  "summary": "Two to three sentences, only what the page states.",
-  "tick_boxes": {
-    "owner_can_appoint_successor": false,
-    "heirs_can_request_access": true,
-    "subscription_or_balance_addressed": null,
-    "proof_required": true
-  },
-  "checked": "2026-09-24"
-}
-```
-
-`true` / `false` means the page says so, `null` means it does not say. A provider without a clear legacy policy is a valid result: `legacy_policy_url` is `"not found"` and `summary` is `"none"`.
-
-Quota: Apertus allows 5 requests/s and 10M input / 2.5M output tokens. The client stays at 4 requests/s and prints the tokens it used (a lookup costs roughly 3-10k input tokens); saved records are reused, so a website costs tokens only once.
-
-Good to know:
-- Summaries are machine-written from the linked page: check the source before relying on them. Only company pages count; community, forum and Q&A pages are never used.
-- A tick box is `true`/`false` only if the model quoted the page for it and the quote is really on the page; otherwise it is `null`.
-- Some sites block bots or disallow the page in `robots.txt` (the crawler respects both). If a promising page cannot be read, the record links to it and the summary comes from the public search result; it says so, and the tick boxes stay `null`.
-- Only HTML pages are read (no PDF or Word files). The web search is keyless and can be throttled; then the agent navigates from the homepage instead.
-
-**In the app** (`policies/legacy.py`): the UI only reads the saved records in `data/legacy_policy_demo.json` (matched by the asset's exact website), so it works offline and without a token. `get_policies_for_service()` applies a record on top of the `DeathPolicy`: summary, link, "checked" date and tick boxes, flagged `ai_generated`; hand-written fields are kept. AI text is always shown with a 🤖 label and a caution note. "Not found" is shown as such, with a "possibly useful link (unverified)". The owner view has a **🕊️ Legacy Policies** tab with a table and a "Look up" button per provider without a result. The button crawls live (10-40 s, needs the token in `.env`) and saves the record into the same file. Set `LEGACY_POLICY_FILE` to use another file.
+1. VZ VermögensZentrum: independent financial consulting incl. estate planning. <https://www.vermoegenszentrum.ch/en> and <https://www.vermoegenszentrum.ch/en/estate-planning>
+2. Apertus 1.5 release (24 July 2026): "fully open: open weights, open data, open values, and full training details"; 8B and 70B models, 262,144-token context, improved tool use. <https://apertus-ai.org/articles/2026-07-apertus-1-5/>. Model card (Apache 2.0): <https://huggingface.co/swiss-ai/Apertus-v1.5-70B>
+3. Swisscom, "Apertus: Switzerland launches an open-source AI model": built by EPFL, ETH Zurich and CSCS; multilingual; "developed with due consideration to Swiss data protection laws, Swiss copyright laws, and the transparency obligations under the EU AI Act". <https://www.swisscom.ch/en/about/news/2025/09/02-apertus.html>
+4. Swisscom Swiss AI Platform: "Your data and information remain in Switzerland at all times and cannot be used for development by international tech companies"; offers Apertus. <https://www.swisscom.ch/en/business/enterprise/offer/platforms-applications/data-driven-business/swiss-ai-platform.html>. Apertus 1.5 70B API documentation: <https://docs.cloud.swisscom.ch/guide/cloud-services/aip/models/apertus-1_5_70B>
+5. Robots Exclusion Protocol (RFC 9309). <https://www.rfc-editor.org/rfc/rfc9309>
+6. VZ Financial Portal: asset overview of banking and pension data, insurance and mortgage management, VZ Safe for documents, secured login, data remains in Switzerland, free for VZ clients. <https://www.vermoegenszentrum.ch/en/solution/vz-financial-portal>
+7. VZ Finanzportal app (iOS and Android). <https://apps.apple.com/gb/app/vz-finanzportal/id1553514484> and <https://play.google.com/store/apps/details/VZ_Financial_Portal?id=ch.vermoegenszentrum.fipo>
