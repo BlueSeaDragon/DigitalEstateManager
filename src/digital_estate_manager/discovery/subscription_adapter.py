@@ -10,6 +10,7 @@ from digital_estate_manager.models.schemas import (
     Asset,
     AssetStatus,
     DiscoveryResult,
+    EvidenceItem,
     SubscriptionAssetInfo,
 )
 from digital_estate_manager.policies.rules import get_policies_for_service
@@ -82,8 +83,33 @@ def _notes(sub: Dict[str, Any], evidence_types: Dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-def subscription_to_asset(sub: Dict[str, Any], evidence_types: Optional[Dict[str, str]] = None) -> Asset:
-    """Converts one finder subscription into an `Asset`. Raises KeyError/TypeError/ValueError if malformed."""
+def _evidence_item(record: Dict[str, Any]) -> Optional[EvidenceItem]:
+    """One finder evidence record as an `EvidenceItem`; None if it has no date."""
+    observed = record.get("observed") or {}
+    if not observed.get("date"):
+        return None
+    kind = "email" if record.get("type") == "email" else "transaction"
+    amount = observed.get("amount")
+    return EvidenceItem(
+        date=str(observed["date"]),
+        kind=kind,
+        amount=float(amount) if isinstance(amount, (int, float)) else None,
+        currency=str(observed["currency"]).upper() if observed.get("currency") else None,
+        description=str(observed.get("description") or observed.get("subject") or observed.get("merchant") or ""),
+        source=str(record.get("source") or ""),
+    )
+
+
+def subscription_to_asset(
+    sub: Dict[str, Any],
+    evidence_types: Optional[Dict[str, str]] = None,
+    evidence_by_id: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Asset:
+    """Converts one finder subscription into an `Asset`. Raises KeyError/TypeError/ValueError if malformed.
+
+    `evidence_by_id` maps evidence ids to the finder's evidence records; the ones this
+    subscription references become `Asset.evidence` (refunds included).
+    """
     inferred = sub["inferred"]
     finder_cycle = inferred["billing_cycle"]
     if finder_cycle not in BILLING_CYCLES:
@@ -105,6 +131,15 @@ def subscription_to_asset(sub: Dict[str, Any], evidence_types: Optional[Dict[str
     if inferred.get("currency"):
         info_kwargs["currency"] = str(inferred["currency"]).upper()
 
+    evidence_by_id = evidence_by_id or {}
+    evidence = [
+        item
+        for item in (_evidence_item(evidence_by_id[e]) for e in sub.get("evidence_ids", []) if e in evidence_by_id)
+        if item is not None
+    ]
+    evidence.sort(key=lambda item: item.date)
+    confidence = sub.get("confidence")
+
     return Asset(
         service=service,
         service_address=service_address,
@@ -115,6 +150,9 @@ def subscription_to_asset(sub: Dict[str, Any], evidence_types: Optional[Dict[str
         status=STATUSES.get(inferred.get("status"), "Pending Review"),
         notes=_notes(sub, evidence_types or {}),
         user_verified=False,
+        confidence=confidence if confidence in CONFIDENCE_SCORES else None,
+        confidence_reasons=[str(r) for r in sub.get("confidence_reasons") or []],
+        evidence=evidence,
     )
 
 
@@ -127,18 +165,17 @@ def to_discovery_result(result: Dict[str, Any], source_name: str = "Subscription
     if not isinstance(result, dict) or not isinstance(result.get("subscriptions"), list):
         raise MalformedFinderResult("subscription finder result has no 'subscriptions' list")
 
-    evidence_types = {
-        e["evidence_id"]: e.get("type", "")
-        for e in result.get("evidence") or []
-        if isinstance(e, dict) and "evidence_id" in e
+    evidence_by_id = {
+        e["evidence_id"]: e for e in result.get("evidence") or [] if isinstance(e, dict) and "evidence_id" in e
     }
+    evidence_types = {evidence_id: e.get("type", "") for evidence_id, e in evidence_by_id.items()}
 
     assets: List[Asset] = []
     scores: List[float] = []
     skipped = 0
     for sub in result["subscriptions"]:
         try:
-            assets.append(subscription_to_asset(sub, evidence_types))
+            assets.append(subscription_to_asset(sub, evidence_types, evidence_by_id))
         except (KeyError, TypeError, ValueError):
             skipped += 1
             continue
