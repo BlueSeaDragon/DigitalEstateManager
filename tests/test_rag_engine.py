@@ -11,7 +11,7 @@ pytest.importorskip("openai")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend import rag_engine  # noqa: E402
+from cancel_policy_finder import rag_engine  # noqa: E402
 from digital_estate_manager.models import Asset, CancelPolicy, DeathPolicy  # noqa: E402
 from digital_estate_manager.policies import generate_action_email, get_policies_for_service  # noqa: E402
 

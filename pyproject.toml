@@ -22,6 +22,8 @@ dependencies = [
     "openai>=1.30",
     "google-api-python-client>=2.100",
     "google-auth-oauthlib>=1.2",
+    "uvicorn",
+    "fastapi"
 
 ]
 
