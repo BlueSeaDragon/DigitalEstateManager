@@ -12,10 +12,12 @@ crawler (`legacy_policy_crawler`, `digital_estate_manager.policies.legacy`).
 import json
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
+from urllib.parse import urlsplit
 
 from openai import OpenAI
 
@@ -95,10 +97,16 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
     # after_death (disabled):
     # if mode == "after_death":
     #     query = f"{provider_name} support contact email cancellation Todesfall Kündigung Schweiz"
-    query = f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo Support Contact Email"
-
-    search_results = fetch_web_results_safe(query)
-    context_str = "\n\n".join(search_results) if search_results else f"Rely on official Swiss and global support facts for {provider_name}."
+    queries = [
+        f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo Support Contact Email",
+        f"{provider_name} {sub_type} kündigen Anleitung",
+    ]
+    search_results: List[str] = []
+    for query in queries:
+        for result in fetch_web_results_safe(query):
+            if result not in search_results:
+                search_results.append(result)
+    context_str = "\n\n".join(search_results) if search_results else "No search results were found."
 
     system_prompt = f"You are a Swiss legal and estate assistant analyzing cancellation policies strictly for '{provider_name}'. Output valid JSON only."
 
@@ -117,9 +125,12 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
     Mode: {mode}
 
     STRICT COMPLIANCE & CONTACT EXTRACTION RULES:
-    1. PROVIDE DIRECT CONTACT INFO:
-       - If an email, portal URL, or contact link exists for {provider_name} (e.g. support@anthropic.com, https://support.anthropic.com, support@sbb.ch), YOU MUST INCLUDE IT in 'contact_email' and 'portal_url'.
-       - DO NOT leave 'portal_url' or 'contact_email' empty if the official support domain or address is standard for {provider_name}.
+    1. LINKS AND CONTACTS COME ONLY FROM THE CONTEXT:
+       - 'portal_url': the page that explains how to cancel {provider_name} or where the cancellation is done (e.g. a help article "cancel subscription" / "Abo kündigen"). Copy it exactly from a 'URL:' line in the Context. Never a homepage.
+       - 'policy_url': the page with {provider_name}'s cancellation terms (e.g. "Kündigung und Erstattung", terms of cancellation). Copy it exactly from a 'URL:' line in the Context.
+       - Prefer pages on {provider_name}'s own website; use third-party pages only if the Context has no official page.
+       - 'contact_email': only an email address that appears in the Context as a contact for cancellations.
+       - If the Context contains no suitable URL or email, return "" for it. Never guess or invent links or email addresses.
     2. Provide standard notice periods and minimum contract terms.
     3. PLAN VARIATION:
        - Decide whether the cancellation rules (minimum contract duration, notice period, cancellation channel) differ between {provider_name}'s plans.
@@ -161,6 +172,7 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
                 time.sleep(1.0)
                 continue
 
+            data["_sources"] = search_results  # lets policies_from_rag() drop links not found in the search
             return data
 
         except Exception as e:
@@ -199,6 +211,36 @@ def _as_email(value: Any) -> Optional[str]:
     return email if "@" in email and " " not in email else None
 
 
+def _url_key(url: str) -> Tuple[str, str]:
+    parts = urlsplit(url)
+    return parts.netloc.lower().removeprefix("www."), parts.path.rstrip("/")
+
+
+def _grounded_url(url: Optional[str], sources: Optional[List[str]]) -> Optional[str]:
+    """Keeps a URL only if that exact page is in the search results (never a bare homepage).
+
+    Returns the search result's own URL, so query parameters like the language are kept.
+    `sources` is None when no search ran (e.g. raw JSON from tests): the URL is kept as is.
+    """
+    if url is None or sources is None:
+        return url
+    host, path = _url_key(url)
+    if not path:
+        return None
+    source_urls = re.findall(r"^URL: (\S+)", "\n".join(sources), flags=re.MULTILINE)
+    if url in source_urls:
+        return url
+    return next((s for s in source_urls if _url_key(s) == (host, path)), None)
+
+
+def _grounded_email(email: Optional[str], sources: Optional[List[str]]) -> Optional[str]:
+    """Keeps an email address only if exactly that address appears in the search results."""
+    if email is None or sources is None:
+        return email
+    pattern = rf"(?<![\w.+-]){re.escape(email)}(?![\w-])"
+    return email if re.search(pattern, "\n".join(sources), flags=re.IGNORECASE) else None
+
+
 def _required_documents(raw_docs: Any) -> List[str]:
     docs: List[str] = []
     for doc in _as_list(raw_docs):
@@ -222,12 +264,15 @@ def policies_from_rag(
     """Maps raw RAG policy JSON onto the webapp's DeathPolicy and CancelPolicy.
 
     The death policy comes from the knowledge base (the legacy policy crawler overlays it in
-    the app); only the CancelPolicy is built from the RAG result.
+    the app); only the CancelPolicy is built from the RAG result. Links and the email address
+    are kept only if they appear in the search results (`raw["_sources"]`).
     """
-    portal_url = _as_url(raw.get("portal_url"))
+    sources = raw.get("_sources")
+    portal_url = _grounded_url(_as_url(raw.get("portal_url")), sources)
+    policy_url = _grounded_url(_as_url(raw.get("policy_url")), sources)
     # after_death (disabled):
     # mourning_portal_url = _as_url(raw.get("mourning_portal_url")) if raw.get("has_mourning_portal") else None
-    support_email = _as_email(raw.get("contact_email"))
+    support_email = _grounded_email(_as_email(raw.get("contact_email")), sources)
     required_documents = _required_documents(raw.get("required_docs"))
     notice_period = _as_str(raw.get("notice_period"))
     minimum_duration = _as_str(raw.get("minimum_contract_duration"))
@@ -241,7 +286,7 @@ def policies_from_rag(
         "mode": mode,
         "sub_type": sub_type,
         "primary_channel": primary_channel or None,
-        "policy_url": _as_url(raw.get("policy_url")),
+        "policy_url": policy_url,
         "notice_period": notice_period or None,
         "minimum_contract_duration": minimum_duration or None,
         "contact_phone": _as_str(raw.get("contact_phone")) or None,

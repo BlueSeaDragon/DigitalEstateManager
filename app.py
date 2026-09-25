@@ -652,7 +652,7 @@ def render_researched_cancellation(
     with st.container(horizontal=True):
         if policy.target_url:
             st.link_button("Open cancellation page", policy.target_url, type="primary", icon=":material/open_in_new:")
-        if policy_url and (general_policy or not enough_steps):
+        if policy_url and policy_url != policy.target_url and (general_policy or not enough_steps):
             st.link_button(f"{name} cancellation policy", policy_url, icon=":material/description:")
         if policy.support_email:
             st.link_button(f"Email {policy.support_email}", f"mailto:{policy.support_email}", icon=":material/mail:")

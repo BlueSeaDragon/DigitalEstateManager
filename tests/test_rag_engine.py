@@ -63,6 +63,48 @@ def test_after_death_is_disabled():
     assert "Erbenschein" not in cancel.required_documents
 
 
+SOURCES = [
+    "Title: Google One-Abo kündigen\nSnippet: So kündigen Sie ...\n"
+    "URL: https://support.google.com/googleone/answer/9056360?hl=de-ch",
+    "Title: Kauf, Kündigung und Erstattung\nSnippet: Fragen an googleone-support@google.com\n"
+    "URL: https://support.google.com/googleone/answer/2736362?hl=de-DE",
+]
+
+
+def test_links_and_email_must_come_from_the_search_results():
+    raw = {
+        "portal_url": "https://support.google.com/googleone/answer/9056360",  # found (without query)
+        "policy_url": "https://one.google.com/terms-of-service",  # invented
+        "contact_email": "support@google.com",  # invented
+        "_sources": SOURCES,
+    }
+    _, cancel = rag_engine.policies_from_rag(raw, "Google One")
+
+    assert cancel.target_url == "https://support.google.com/googleone/answer/9056360?hl=de-ch"
+    assert cancel.action_payload["policy_url"] is None
+    assert cancel.support_email is None
+
+
+def test_found_email_is_kept_and_homepages_are_dropped():
+    raw = {
+        "portal_url": "https://one.google.com/",
+        "policy_url": "https://support.google.com/googleone/answer/2736362",
+        "contact_email": "googleone-support@google.com",
+        "_sources": SOURCES + ["Title: Google One\nSnippet: ...\nURL: https://one.google.com/"],
+    }
+    _, cancel = rag_engine.policies_from_rag(raw, "Google One")
+
+    assert cancel.target_url is None
+    assert cancel.action_payload["policy_url"] == "https://support.google.com/googleone/answer/2736362?hl=de-DE"
+    assert cancel.support_email == "googleone-support@google.com"
+
+
+def test_no_search_results_means_no_links():
+    raw = {"portal_url": "https://www.spotify.com/account", "contact_email": "support@spotify.com", "_sources": []}
+    _, cancel = rag_engine.policies_from_rag(raw, "Spotify")
+    assert cancel.target_url is None and cancel.support_email is None
+
+
 def test_registered_letter_maps_to_manual_steps():
     _, cancel = rag_engine.policies_from_rag({"primary_channel": "registered_letter"}, "Fitnesspark")
     assert cancel.execution_method == "manual_steps"
