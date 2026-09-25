@@ -217,6 +217,10 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Backend: generated letters and secrets
+*.pdf
+.env
+
 # Subscription finder: private data, secrets, outputs
 data/
 credentials.json
