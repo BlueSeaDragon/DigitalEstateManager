@@ -47,7 +47,7 @@ Status: design approved, 2026-09-24. Branch: `feat/vz-redesign`.
 | # | Decision | Alternatives considered | Why |
 |---|---|---|---|
 | 1 | Inspired by VZ, own branding | Co-branded mock-up; neutral Swiss fintech; keep dark | Plausible ecosystem fit without imitating VZ's brand |
-| 2 | Name: Digital Legacy Vault | Digital Estate Manager; Estate Manager | Owner's choice |
+| 2 | Name: Digital Estate Manager | Digital Legacy Vault; Digital Legacy Manager | Owner's choice |
 | 3 | Two phases: visual overhaul, then pitch flow | One pass; visual only | Reviewable diffs; Phase 1 is useful on its own |
 | 4 | Demo uses both sample data and live Gmail; the pitch is a recorded video | Live Gmail only; scripted animation | Honest (real computation) with no on-stage risk |
 | 5 | Sample persona in `samples/` with a generator; seed 11 (2 false positives) | Clean seed 303 | Gives something real to reject in "Needs review" |
@@ -90,7 +90,7 @@ Status: design approved, 2026-09-24. Branch: `feat/vz-redesign`.
 ### 4.2 Information architecture and navigation
 
 - **Sidebar:**
-  - Wordmark "Digital Legacy Vault" with the caption "Digital estate overview".
+  - Wordmark "Digital Estate Manager" with the caption "Digital estate overview".
   - Navigation: **Overview**, **Assets** (was Catalogue), **Discover** (was Find Assets). The active
     item has a 2px orange marker.
   - At the bottom, a segmented "VIEW AS" control (*Owner | Executor*) with a one-line caption.
