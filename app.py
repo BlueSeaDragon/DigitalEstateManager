@@ -84,7 +84,7 @@ except ImportError:  # finder not installed: parse_and_extract() reports that it
         pass
 
 st.set_page_config(
-    page_title="Digital Estate Manager",
+    page_title="Digital Legacy Manager",
     page_icon=":material/lock:",
     layout="wide",
 )
