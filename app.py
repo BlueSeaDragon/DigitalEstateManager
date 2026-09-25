@@ -31,7 +31,6 @@ from digital_estate_manager.models import (
     SocialMediaAssetInfo,
     SubscriptionAssetInfo,
 )
-from digital_estate_manager.policies import generate_action_email
 from digital_estate_manager.policies.legacy import (
     AI_NOTICE,
     apply_legacy_record,
@@ -93,7 +92,6 @@ PAGES = ["Assets", "Discover"]
 LEGACY_PAGES = {"Overview": "Assets", "Catalogue": "Assets", "Find Assets": "Discover"}
 CATEGORIES = ["Subscription", "Crypto / Finance", "Cloud Storage", "Social Media", "Other"]
 CLOSED = ("Cancelled", "Archived", "Completed")
-ACTIONS = ["Cancel", "Transfer & Archive", "Probate Recovery", "Memorialize", "Delete Account"]
 STATUSES = ["Active", "Pending Review", "In Progress", "Completed", "Cancelled", "Archived", "Removed", "Wrongly Attributed"]
 
 # =============================================================================
@@ -203,8 +201,6 @@ def render_policy_summary(death_pol: DeathPolicy) -> None:
         st.caption(AI_NOTICE + checked)
         if death_pol.policy_found:
             ui.definition_list(policy_answers(death_pol))
-    if death_pol.security_warning:
-        ui.notice(death_pol.security_warning, "amber")
 
 
 # =============================================================================
@@ -334,18 +330,15 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         custom_notes_val = st.text_area("Description", key="modal_other_notes")
 
     ui.section_label("After death")
-    col_o1, col_o2 = st.columns(2, vertical_alignment="top")
-    with col_o1:
-        heir_input = st.text_input("Responsible heir", value="Alex", key="modal_heir")
-    with col_o2:
-        action_input = st.selectbox("Planned action", ACTIONS, key="modal_action")
-
     wish_input = st.selectbox(
         "Your wish for this account (optional)",
         WISH_OPTIONS,
         format_func=lambda option: option or "Not set",
         key="modal_wish",
     )
+    heir_input = ""
+    if wish_input == "Pass to heir":
+        heir_input = st.text_input("Responsible heir (optional)", placeholder="e.g. Alex", key="modal_heir")
     wish_detail = ""
     if wish_input == "Other":
         wish_detail = st.text_input("Your wish, in a few words", max_chars=60, key="modal_wish_text",
@@ -409,7 +402,6 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             )
 
         default_death, default_cancel = get_policies_for_service(service_input, website_input)
-        default_cancel.action_name = action_input
 
         new_asset = Asset(
             service=service_input.strip(),
@@ -778,11 +770,17 @@ if _switch:
 # 4. Asset lists
 # =============================================================================
 ROW = [3.2, 1.6, 1.4, 1.3, 0.8]
+EXECUTOR_ROW = [3.2, 1.6, 1.3, 0.8]
 
 
-def list_header(labels: List[str]) -> None:
+def has_heir(asset: Asset) -> bool:
+    """A responsible heir exists only when the owner's wish is to pass the account on and they named one."""
+    return asset.wish == "Pass to heir" and asset.heir.strip() not in ("", "Unassigned")
+
+
+def list_header(labels: List[str], widths: List[float] = ROW) -> None:
     with st.container(key="list_head"):
-        cols = st.columns(ROW, vertical_alignment="center")
+        cols = st.columns(widths, vertical_alignment="center")
         for col, label in zip(cols, labels):
             with col:
                 ui.section_label(label, first=True)
@@ -842,14 +840,16 @@ def wish_picker(asset: Asset, key: str) -> None:
         asset.wish = wish
         save_wishes(st.session_state.assets)
         st.rerun()
+    if choice == "Pass to heir":
+        heir = st.text_input("Responsible heir (optional)", value=asset.heir if has_heir(asset) else "",
+                             placeholder="e.g. Alex", key=f"heir_{key}")
+        asset.heir = heir.strip() or "Unassigned"
 
 
 def owner_details(asset: Asset, key: str) -> None:
     """Definition list, evidence for detected items, and the contextual actions."""
     facts: Dict[str, object] = {"Account": asset.username or "Not recorded", "Website": asset.service_address}
     facts.update(asset_facts(asset))
-    facts["Responsible heir"] = asset.heir
-    facts["Planned action"] = asset.action
     if asset.notes and not asset.evidence and asset.user_verified:
         facts["Notes"] = asset.notes
     ui.definition_list(facts)
@@ -914,15 +914,6 @@ def owner_rows(assets: List[Asset], prefix: str) -> None:
                     owner_details(asset, row_key)
 
 
-def notification_letter(asset: Asset, deceased_name: str) -> str:
-    return generate_action_email(
-        asset=asset,
-        executor_name=asset.heir if asset.heir != "Unassigned" else "Authorized heir",
-        deceased_name=deceased_name or "[Name of the deceased]",
-        account_email=asset.username or None,
-    )
-
-
 def flag_asset(asset: Asset, flagged: bool) -> None:
     asset.status = "Wrongly Attributed" if flagged else "Active"
     notify(f"{display_name(asset)} flagged as not part of the estate." if flagged else f"{display_name(asset)} returned to the estate.")
@@ -934,7 +925,7 @@ def set_done(asset: Asset, key: str) -> None:
     asset.cancel_policy.status = "Completed" if done else "In Progress"
 
 
-def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
+def executor_details(asset: Asset, key: str) -> None:
     death_pol, cancel_pol = asset.death_policy, asset.cancel_policy
     is_flagged = asset.status == "Wrongly Attributed"
     if is_flagged:
@@ -944,27 +935,13 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
 
     facts: Dict[str, object] = {"Account": asset.username or "Not recorded", "Website": asset.service_address}
     facts.update(asset_facts(asset))
-    facts["Responsible heir"] = asset.heir
+    if has_heir(asset):
+        facts["Responsible heir"] = asset.heir
     if asset.wish:
         facts["Owner's wish"] = asset.wish
     ui.definition_list(facts)
 
     render_policy_summary(death_pol)
-
-    if cancel_pol.steps:
-        ui.section_label("Checklist")
-        ui.numbered(cancel_pol.steps)
-    if cancel_pol.required_documents:
-        st.caption("Documents: " + ", ".join(cancel_pol.required_documents) + ".")
-
-    ui.section_label("Notification letter")
-    st.text_area(
-        "Notification letter",
-        notification_letter(asset, deceased_name),
-        height=160,
-        key=f"exec_notice_{key}",
-        label_visibility="collapsed",
-    )
 
     portal = death_pol.official_portal_url or cancel_pol.target_url or asset.service_address
     with st.container(horizontal=True, vertical_alignment="center"):
@@ -982,28 +959,26 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
                       help="Use this if the account did not belong to the deceased. It stays in the audit log.")
 
 
-def executor_rows(assets: List[Asset], prefix: str, deceased_name: str) -> None:
+def executor_rows(assets: List[Asset], prefix: str) -> None:
     """Worklist, largest monthly charge first. Closed items keep their place so rows don't jump when ticked."""
-    list_header(["Service", "Per month", "Responsible heir", "Status", ""])
+    list_header(["Service", "Per month", "Status", ""], EXECUTOR_ROW)
     for asset in sorted(assets, key=lambda a: (-monthly_cost_chf(a), display_name(a).lower())):
         row_key = f"{prefix}_{asset.id}"
         with st.container(key=f"row_{row_key}"):
-            c1, c2, c3, c4, c5 = st.columns(ROW, vertical_alignment="center")
+            c1, c2, c3, c4 = st.columns(EXECUTOR_ROW, vertical_alignment="center")
             with c1:
                 ui.cell(display_name(asset), subtitle(asset), strong=True)
             with c2:
                 ui.cell(monthly_display(asset), categories_display(asset))
             with c3:
-                ui.cell(asset.heir)
-            with c4:
                 st.markdown(ui.status_label(status_text(asset.status)), unsafe_allow_html=True)
             is_open = row_key in st.session_state.open_rows
-            with c5:
+            with c4:
                 st.button("Hide" if is_open else "Details", type="tertiary", key=f"toggle_{row_key}",
                           on_click=toggle_row, args=(row_key,))
             if is_open:
                 with st.container(key=f"details_{row_key}"):
-                    executor_details(asset, row_key, deceased_name)
+                    executor_details(asset, row_key)
 
 
 def policy_row(asset: Asset) -> Dict[str, object]:
@@ -1073,10 +1048,10 @@ def inventory_csv(assets: List[Asset]) -> str:
     """Basic export for the Share step."""
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["Service", "Account", "Website", "Category", "Per month", "Responsible heir", "Planned action", "Status"])
+    writer.writerow(["Service", "Account", "Website", "Category", "Per month", "Responsible heir", "Status"])
     for a in assets:
         writer.writerow([a.service, a.username, a.service_address, categories_display(a), monthly_display(a),
-                         a.heir, a.action, a.status])
+                         a.heir if has_heir(a) else "", a.status])
     return out.getvalue()
 
 
@@ -1430,6 +1405,7 @@ if page == "Assets" and role == "Owner":
         df = pd.DataFrame([a.to_table_row() for a in shown])
         if not df.empty:  # the text of "Other" is edited on the account card
             df["My Wish"] = df["My Wish"].map(lambda wish: split_wish(wish)[0])
+            df = df.drop(columns=["Action"])
         edited = st.data_editor(
             df,
             width="stretch",
@@ -1441,7 +1417,6 @@ if page == "Assets" and role == "Owner":
                     "Your wish", help="What should happen to this account after your death", options=WISH_OPTIONS[1:]
                 ),
                 "Cost": st.column_config.TextColumn("Cost / value"),
-                "Action": st.column_config.SelectboxColumn("Action", options=ACTIONS),
                 "Status": st.column_config.SelectboxColumn("Status", options=STATUSES),
             },
         )
@@ -1523,11 +1498,10 @@ elif page == "Assets":
             (str(with_policy), "with the provider's policy on file", False),
         ])
 
-        st.text_input("Name of the deceased", key="deceased_name", placeholder="Full name, used in the letters",
+        st.text_input("Name of the deceased", key="deceased_name", placeholder="Full name",
                       width=420)
         with st.container(horizontal=True, vertical_alignment="center", gap="small"):
-            st.caption("Most providers ask for the death certificate and your executor certificate. "
-                       "You can flag an account but not remove it.", width="content")
+            st.caption("You can flag an account but not remove it.", width="content")
             with st.popover("Why?", type="tertiary"):
                 st.markdown(
                     "Every account the owner listed stays in the records, including ones the owner removed. "
@@ -1549,7 +1523,7 @@ elif page == "Assets":
             shown = [a for a in active_pool if matches_category(a, choice)]
 
         if shown:
-            executor_rows(shown, "exe", named)
+            executor_rows(shown, "exe")
         else:
             ui.muted("No accounts here.")
 

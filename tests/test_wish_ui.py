@@ -56,3 +56,10 @@ def test_executor_details_have_no_generated_action_line(tmp_path, monkeypatch):
     next(b for b in at.button if b.label == "Details").click().run()
     assert not at.exception
     assert "<dt>Action</dt>" not in " ".join(m.value for m in at.markdown)
+
+
+def test_owner_card_and_dialog_have_no_planned_action(owner_card):
+    text = " ".join(m.value for m in owner_card.markdown)
+    assert "Planned action" not in text and "<dt>Action</dt>" not in text
+    next(b for b in owner_card.button if b.label == "Add asset").click().run()
+    assert all(s.label != "Planned action" for s in owner_card.selectbox)

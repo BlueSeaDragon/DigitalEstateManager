@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from digital_estate_manager.policies import generate_action_email
 
 st_testing = pytest.importorskip("streamlit.testing.v1")
 
@@ -93,15 +92,14 @@ def test_owner_details_show_actions(app):
     assert "Cancel subscription" in labels and "Remove" in labels
 
 
-def test_executor_details_show_notification_letter(app):
+def test_executor_details_have_no_generated_guidance(app):
     set_role(app, "Executor")
-    app.text_input(key="deceased_name").input("Anna Muster").run()
-    # The worklist is sorted by cost; open an account whose action is a letter (not a portal guide).
-    asset = next(a for a in app.session_state["assets"] if generate_action_email(a).startswith("Subject:"))
-    app.button(key=f"toggle_exe_{asset.id}").click().run()
+    app.button(key=next(b.key for b in app.button if b.key and b.key.startswith("toggle_exe_"))).click().run()
     assert_clean(app)
-    letter = next(t for t in app.text_area if t.key == f"exec_notice_exe_{asset.id}")
-    assert "Anna Muster" in letter.value
+    text = rendered_text(app)
+    assert not any(t.key and t.key.startswith("exec_notice_") for t in app.text_area)
+    for removed in ("Notification letter", "Checklist", "Documents:"):
+        assert removed not in text
 
 
 def test_demo_scan_rules_only_adds_reviewable_findings(app):
