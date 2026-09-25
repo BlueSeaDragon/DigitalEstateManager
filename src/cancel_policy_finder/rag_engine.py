@@ -95,9 +95,12 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
     """Runs web search + Apertus and returns the raw policy JSON."""
     _require_api_key()
     if mode == "after_death":
+        # Providers describe the death case in their own words: "deceased user", "account holder has
+        # passed away" (international, usually English) or "Todesfall" (Swiss). The plan does not matter.
         queries = [
-            f"{provider_name} support contact email cancellation Todesfall Kündigung Schweiz",
-            f"{provider_name} {sub_type} kündigen verstorben Angehörige",
+            f"{provider_name} deceased account holder cancel subscription",
+            f"{provider_name} account holder passed away close account family",
+            f"{provider_name} Todesfall verstorbene Person Konto Abo kündigen Angehörige",
         ]
     else:
         queries = [
@@ -105,9 +108,12 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
             f"{provider_name} {sub_type} kündigen Anleitung",
         ]
     search_results: List[str] = []
+    seen_urls = set()
     for query in queries:
         for result in fetch_web_results_safe(query):
-            if result not in search_results:
+            url = result.rsplit("URL: ", 1)[-1]
+            if url not in seen_urls:
+                seen_urls.add(url)
                 search_results.append(result)
     context_str = "\n\n".join(search_results) if search_results else "No search results were found."
 
@@ -131,6 +137,8 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
        - List official required documents in 'required_docs' (MUST include "Todesurkunde (Death Certificate)" and "Erbenschein").
        - Step-by-step instructions in 'channel_instructions' MUST reference the exact contact email or portal provided in the JSON fields.
        - If the Context has {provider_name}'s page for bereaved relatives / deceased customers, set 'has_mourning_portal' to true and copy its URL into 'mourning_portal_url'.
+       - 'portal_url': prefer that page about deceased users over the normal cancellation page.
+       - The steps must be doable by the executor or a relative WITHOUT the deceased's login: the provider's page or form for deceased users, email, phone or a letter with the Todesurkunde. Never tell them to log into the deceased's account.
     3. If Mode is 'during_life':
        - Provide standard notice periods and minimum contract terms.
     4. PLAN VARIATION:

@@ -93,6 +93,20 @@ def test_after_death_mourning_portal_must_come_from_the_search_results():
     assert cancel.target_url == "https://www.swisscom.ch/de/privatkunden/hilfe.html"
 
 
+def test_after_death_searches_use_death_case_terms(monkeypatch):
+    queries = []
+    monkeypatch.setattr(rag_engine, "SWISSCOM_API_KEY", "test-key")
+    monkeypatch.setattr(rag_engine, "fetch_web_results_safe", lambda query: queries.append(query) or [])
+    completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))])
+    monkeypatch.setattr(rag_engine.client.chat.completions, "create", lambda **kwargs: completion)
+
+    rag_engine._query_policy("Spotify", "Premium Individual", "after_death")
+
+    joined = " ".join(queries).lower()
+    assert "deceased" in joined and "passed away" in joined and "todesfall" in joined
+    assert "mindestlaufzeit" not in joined and "premium individual" not in joined
+
+
 def test_during_life_has_no_after_death_rules():
     _, cancel = rag_engine.policies_from_rag(EMAIL_RAW, "Swisscom")
     assert "legal_basis" not in cancel.action_payload
