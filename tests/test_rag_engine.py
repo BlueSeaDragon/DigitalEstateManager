@@ -36,6 +36,7 @@ DURING_LIFE_RAW = {
     "primary_channel": "web_portal",
     "channel_instructions": ["Log in", "Cancel under Abos"],
     "portal_url": "https://www.spotify.com/account",
+    "policy_url": "https://www.spotify.com/legal/end-user-agreement/",
     "contact_email": "",
     "required_docs": "Account email",
 }
@@ -77,6 +78,7 @@ def test_during_life_keeps_known_death_policy_and_tolerates_messy_output():
     assert cancel.required_documents == ["Account email"]
     assert "legal_basis" not in cancel.action_payload
     assert cancel.action_payload["notice_period"] == "2 months"
+    assert cancel.action_payload["policy_url"] == "https://www.spotify.com/legal/end-user-agreement/"
 
 
 @pytest.mark.parametrize("mode", ["during_life", "after_death"])

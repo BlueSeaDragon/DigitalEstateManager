@@ -113,6 +113,11 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
        - Step-by-step instructions in 'channel_instructions' MUST reference the exact contact email or portal provided in the JSON fields.
     3. If Mode is 'during_life':
        - Provide standard notice periods and minimum contract terms.
+    4. PLAN VARIATION:
+       - Decide whether the cancellation rules (minimum contract duration, notice period, cancellation channel) differ between {provider_name}'s plans.
+       - If 'Provided Sub-Type' names a specific plan, answer for that plan and set 'requires_sub_type_selection' to false, unless it matches none of {provider_name}'s plans.
+       - If 'Provided Sub-Type' is generic (e.g. "subscription") and the rules differ significantly between plans, set 'requires_sub_type_selection' to true, list the plan names in 'sub_type_options', and fill all other fields with the general policy that applies across plans.
+       - If the rules are the same for all plans, set 'requires_sub_type_selection' to false and 'sub_type_options' to [].
 
     Return JSON format:
     - minimum_contract_duration: string
@@ -122,6 +127,7 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
     - sub_type_options: list of strings
     - channel_instructions: list of specific step-by-step instructions for {provider_name}
     - portal_url: string
+    - policy_url: string (official {provider_name} page describing its cancellation terms / policy)
     - contact_email: string
     - contact_phone: string
     - mailing_address: string
@@ -227,6 +233,7 @@ def policies_from_rag(
         "mode": mode,
         "sub_type": sub_type,
         "primary_channel": primary_channel or None,
+        "policy_url": _as_url(raw.get("policy_url")),
         "notice_period": notice_period or None,
         "minimum_contract_duration": minimum_duration or None,
         "contact_phone": _as_str(raw.get("contact_phone")) or None,

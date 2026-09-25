@@ -14,6 +14,10 @@ dependencies = [
     "pandas>=2.1.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0",
+    # Cancellation engine (backend/) used by the cancellation guide
+    "openai>=1.0",
+    "fpdf2>=2.7",
+    "ddgs",
     # Also required, installed from the local folder (not from PyPI):
     #   pip install -e ./subscription_finder
 ]

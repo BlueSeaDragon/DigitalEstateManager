@@ -1,4 +1,9 @@
+import os
+import tempfile
+from pathlib import Path
 from typing import List, Optional
+from urllib.parse import quote
+
 import pandas as pd
 import streamlit as st
 
@@ -23,6 +28,13 @@ from digital_estate_manager.models import (
 from digital_estate_manager.policies import generate_action_email
 from digital_estate_manager.policies.rules import get_policies_for_service
 from digital_estate_manager.vault import calculate_metrics, get_default_assets
+
+try:
+    from backend import pdf_generator, rag_engine
+    CANCELLATION_ENGINE_ERROR = None
+except ImportError as exc:  # backend dependencies missing: the cancellation guide falls back to static steps
+    pdf_generator = rag_engine = None
+    CANCELLATION_ENGINE_ERROR = str(exc)
 
 try:
     from subscription_finder import LLMConfigError, ReconnectRequired
@@ -452,119 +464,335 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         st.rerun()
 
 
+CHANNEL_LABELS = {
+    "web_portal": "Online portal",
+    "app_store": "App store subscription settings",
+    "email": "Email",
+    "registered_letter": "Registered letter (Einschreiben)",
+    "phone_call": "Phone call",
+}
+
+
+def _asset_sub_type(asset: Asset) -> str:
+    sub_info = asset.get_info("Subscription")
+    return sub_info.plan_tier if sub_info and sub_info.plan_tier else "subscription"
+
+
+def researched_cancel_policy(asset: Asset, sub_type: str):
+    """Researches the provider's cancellation policy once per asset/plan and session.
+
+    Returns the CancelPolicy, or an error message when the engine is unavailable or fails.
+    """
+    cache = st.session_state.setdefault("researched_cancel_policies", {})
+    key = (asset.id, sub_type)
+    if key not in cache:
+        if rag_engine is None:
+            cache[key] = f"The cancellation engine is not installed ({CANCELLATION_ENGINE_ERROR})."
+        else:
+            with st.spinner(f"Researching the current {asset.service} cancellation policy..."):
+                try:
+                    _, cancel_policy = rag_engine.search_web_cancellation_policy(
+                        asset.service,
+                        sub_type=sub_type,
+                        mode="during_life",
+                        service_address=asset.service_address or None,
+                    )
+                    cache[key] = cancel_policy
+                except Exception as exc:
+                    cache[key] = str(exc)
+    return cache[key]
+
+
+def _letter_kind(policy: CancelPolicy) -> Optional[str]:
+    """'letter' or 'email' when the provider needs a written notice, else None."""
+    channel = policy.action_payload.get("primary_channel")
+    if channel == "registered_letter":
+        return "letter"
+    if channel == "email" or (not channel and policy.execution_method == "email_notice"):
+        return "email"
+    return None
+
+
+def _letter_pdf_bytes(sender_name: str, provider_name: str, provider_address: str, letter_body: str) -> bytes:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        pdf_path = os.path.join(tmp_dir, "cancellation.pdf")
+        pdf_generator.create_cancellation_pdf(
+            sender_name=sender_name,
+            provider_name=provider_name,
+            provider_address=provider_address,
+            letter_body=letter_body,
+            output_path=pdf_path,
+        )
+        return Path(pdf_path).read_bytes()
+
+
+def _split_subject(letter: str, fallback: str):
+    """Splits a 'Betreff: ...' first line off the generated letter for use as email subject."""
+    lines = letter.strip().splitlines()
+    if lines and lines[0].lower().startswith("betreff:"):
+        return lines[0].split(":", 1)[1].strip(), "\n".join(lines[1:]).strip()
+    return fallback, letter.strip()
+
+
+def render_written_notice(asset: Asset, policy: CancelPolicy, sub_type: str, kind: str) -> None:
+    """Button that writes the cancellation email text or letter PDF, and shows the result."""
+    mailing_address = policy.action_payload.get("mailing_address") or ""
+    if kind == "email":
+        st.markdown("#### ✉️ Cancellation Email")
+        st.caption(f"{asset.service} accepts cancellations by email. Generate a ready-to-send text:")
+    else:
+        st.markdown("#### 📄 Cancellation Letter")
+        st.caption(f"{asset.service} requires a written cancellation letter. Generate a ready-to-sign PDF:")
+
+    n1, n2 = st.columns(2)
+    sender_name = n1.text_input("Your full name", key=f"cxl_sender_{asset.id}")
+    contract_id = n2.text_input(
+        "Customer / contract number", value=asset.username, key=f"cxl_contract_{asset.id}"
+    )
+
+    notices = st.session_state.setdefault("generated_cancel_notices", {})
+    button_label = "✍️ Write Cancellation Email" if kind == "email" else "📄 Generate Cancellation Letter"
+    if st.button(
+        button_label,
+        type="primary",
+        width="stretch",
+        disabled=not sender_name.strip(),
+        help=None if sender_name.strip() else "Enter your name first.",
+        key=f"cxl_write_{asset.id}",
+    ):
+        with st.spinner("Writing your cancellation..."):
+            try:
+                letter = rag_engine.generate_cancellation_letter(
+                    provider_name=asset.service,
+                    sub_type=sub_type,
+                    person_name=sender_name.strip(),
+                    contract_id=contract_id.strip() or "-",
+                    mode="during_life",
+                    cancel_policy=policy,
+                )
+                pdf_bytes = None
+                if kind == "letter":
+                    pdf_bytes = _letter_pdf_bytes(
+                        sender_name.strip(), asset.service, mailing_address or "Kundenservice", letter
+                    )
+                notices[asset.id] = {"kind": kind, "text": letter, "pdf": pdf_bytes}
+            except Exception as exc:
+                st.error(f"Could not write the cancellation: {exc}")
+
+    notice = notices.get(asset.id)
+    if not notice or notice["kind"] != kind:
+        return
+
+    if kind == "email":
+        subject, body = _split_subject(notice["text"], f"Kündigung {asset.service} ({contract_id})")
+        if policy.support_email:
+            st.write(f"**Send to:** {policy.support_email}")
+        st.write(f"**Subject:** {subject}")
+        st.text_area("Email text", body, height=260, key=f"cxl_email_text_{asset.id}")
+        if policy.support_email:
+            st.link_button(
+                f"✉️ Open in Mail App ({policy.support_email})",
+                f"mailto:{policy.support_email}?subject={quote(subject)}&body={quote(body)}",
+                width="stretch",
+            )
+    else:
+        if mailing_address:
+            st.write("**Send by registered mail (Einschreiben) to:**")
+            st.code(mailing_address, language=None)
+        st.text_area("Letter text", notice["text"], height=260, key=f"cxl_letter_text_{asset.id}")
+        st.download_button(
+            "⬇️ Download Letter (PDF)",
+            data=notice["pdf"],
+            file_name=f"Kuendigung_{asset.service}.pdf".replace(" ", "_"),
+            mime="application/pdf",
+            type="primary",
+            width="stretch",
+            on_click="ignore",
+            key=f"cxl_pdf_{asset.id}",
+        )
+
+
+# Fewer researched steps than this counts as "not enough" and links to the provider's policy instead
+MIN_STEPS_FOR_GUIDE = 2
+
+
+def _set_state(key: str, value) -> None:
+    """Button callback: runs before the dialog re-renders, so the new state shows immediately."""
+    if value is None:
+        st.session_state.pop(key, None)
+    else:
+        st.session_state[key] = value
+
+
+def _needs_plan(policy: CancelPolicy) -> bool:
+    """True when the cancellation rules differ per plan and the researched plan was not specific."""
+    return bool(policy.action_payload.get("requires_sub_type_selection"))
+
+
+def render_plan_picker(asset: Asset, policy: CancelPolicy, plan_key: str) -> None:
+    """Asks which plan the user has: pick a researched option, type a name, or 'I don't know'."""
+    st.info(f"**Which {asset.service} plan do you have?** The cancellation rules differ between plans.")
+
+    options = policy.action_payload.get("sub_type_options") or []
+    if options:
+        o_cols = st.columns(min(len(options), 3))
+        for idx, option in enumerate(options):
+            o_cols[idx % len(o_cols)].button(
+                option,
+                key=f"cxl_plan_opt_{asset.id}_{idx}",
+                width="stretch",
+                on_click=_set_state,
+                args=(plan_key, {"plan": option}),
+            )
+
+    t1, t2 = st.columns([3, 1], vertical_alignment="bottom")
+    typed_key = f"cxl_plan_typed_{asset.id}"
+    t1.text_input("Or enter your plan name", key=typed_key, placeholder="e.g. Swisscom blue Mobile M")
+
+    def search_typed_plan() -> None:
+        typed = (st.session_state.get(typed_key) or "").strip()
+        if typed:
+            _set_state(plan_key, {"plan": typed})
+
+    t2.button("🔍 Search this plan", key=f"cxl_plan_search_{asset.id}", width="stretch", on_click=search_typed_plan)
+
+    st.button(
+        "🤷 I don't know my plan",
+        key=f"cxl_plan_unknown_{asset.id}",
+        width="stretch",
+        on_click=_set_state,
+        args=(plan_key, {"unknown": True}),
+    )
+
+
+def render_researched_cancellation(
+    asset: Asset, policy: CancelPolicy, sub_type: str, general_policy: bool = False
+) -> None:
+    """Shows only what the RAG engine researched: facts, steps, links, contacts, documents.
+
+    `general_policy` marks a plan-independent answer (user doesn't know their plan): the link to
+    the provider's policy is then always shown so the user can look up their plan's details.
+    """
+    payload = policy.action_payload
+    channel = payload.get("primary_channel")
+
+    facts = [
+        ("Cancel via", CHANNEL_LABELS.get(channel)),
+        ("Notice period", payload.get("notice_period")),
+        ("Minimum contract duration", payload.get("minimum_contract_duration")),
+    ]
+    facts = [(label, value) for label, value in facts if value]
+    if facts:
+        f_cols = st.columns(len(facts))
+        for col, (label, value) in zip(f_cols, facts):
+            col.write(f"**{label}:** {value}")
+
+    if policy.target_url:
+        st.link_button(
+            f"🔗 Open {asset.service} Cancellation Page",
+            policy.target_url,
+            type="primary",
+            width="stretch",
+        )
+
+    enough_steps = len(policy.steps) >= MIN_STEPS_FOR_GUIDE
+    if enough_steps:
+        st.markdown("#### 📋 Step-by-Step Instructions")
+        for idx, step in enumerate(policy.steps, 1):
+            st.markdown(f"**{idx}.** {step}")
+    else:
+        for step in policy.steps:
+            st.markdown(f"- {step}")
+
+    if general_policy or not enough_steps:
+        policy_url = payload.get("policy_url") or policy.target_url
+        if general_policy:
+            reason = f"This is {asset.service}'s general policy; the exact rules depend on your plan."
+        else:
+            reason = "Not enough details found for step-by-step instructions."
+        if policy_url:
+            st.warning(f"{reason} See {asset.service}'s official policy:")
+            st.link_button(f"📄 {asset.service} Cancellation Policy", policy_url, width="stretch")
+        else:
+            st.warning(f"{reason} No link to {asset.service}'s policy was found.")
+
+    contacts = []
+    if policy.support_email:
+        contacts.append(f"✉️ **Email:** [{policy.support_email}](mailto:{policy.support_email})")
+    if payload.get("contact_phone"):
+        contacts.append(f"📞 **Phone:** {payload['contact_phone']}")
+    if payload.get("mailing_address"):
+        contacts.append(f"🏢 **Postal address:** {payload['mailing_address'].replace(chr(10), ', ')}")
+    if contacts:
+        st.markdown("##### 📇 Contact")
+        for contact in contacts:
+            st.markdown(f"- {contact}")
+
+    if policy.required_documents:
+        st.markdown("##### 📑 Required Documentation")
+        for doc in policy.required_documents:
+            st.markdown(f"- {doc}")
+
+    kind = _letter_kind(policy)
+    if kind:
+        st.divider()
+        render_written_notice(asset, policy, sub_type, kind)
+
+
 @st.dialog("Cancellation & Account Closure Guide", width="large")
 def cancellation_guide_dialog(asset: Asset):
-    """Dialogue box guiding the user through manual cancellation and service closure.
-
-    Explains why direct automated cancellation may not be possible, provides known portal
-    links, step-by-step checklists, prepared email drafts, and recommended tasks.
+    """Researches the provider's current cancellation policy on open (RAG engine) and shows only
+    that content, plus a generator for the cancellation email or letter PDF when one is required.
     """
     st.markdown(f"### 🚫 Cancel / Close: **{asset.service}**")
 
-    # Header summary cards
-    b1, b2, b3 = st.columns(3)
-    b1.write(f"**Account Identifier:** `{asset.username or 'N/A'}`")
-    b2.write(f"**Asset Categories:** {asset.category}")
-    b3.write(f"**Cost / Approx. Value:** {asset.cost_display}")
+    # Research runs on open with the account's plan (if known). When the rules differ per plan,
+    # the user picks or types a plan (researched again) or continues with the general policy.
+    sub_type = _asset_sub_type(asset)
+    plan_key = f"cxl_plan_{asset.id}"
+    choice = st.session_state.get(plan_key)  # None, {"plan": name} or {"unknown": True}
+    researched = researched_cancel_policy(asset, sub_type)
+    general_policy = False
 
-    # Display known details
-    details = asset.display_details()
-    if details:
-        st.markdown("##### 📌 Known Account Information")
-        d_cols = st.columns(min(len(details), 4))
-        for idx, (k, v) in enumerate(details.items()):
-            d_cols[idx % min(len(details), 4)].write(f"**{k}:** {v}")
+    if isinstance(researched, CancelPolicy) and _needs_plan(researched):
+        if choice and choice.get("plan"):
+            plan_result = researched_cancel_policy(asset, choice["plan"])
+            if isinstance(plan_result, CancelPolicy) and _needs_plan(plan_result):
+                st.warning(f"No specific policy found for the plan '{choice['plan']}'. Please pick another option.")
+                choice = None
+            else:
+                sub_type, researched = choice["plan"], plan_result
+        elif choice and choice.get("unknown"):
+            general_policy = True
 
-    st.info(
-        "💡 **Why manual action is needed**: Service providers require direct account authentication "
-        "or signed support requests to terminate recurring billing and prevent unauthorized account closures. "
-        "Follow the known steps below to execute this action."
-    )
+        if not choice:
+            render_plan_picker(asset, researched, plan_key)
+            researched = None
+        else:
+            p1, p2 = st.columns([3, 1], vertical_alignment="center")
+            p1.write(f"**Plan:** {'Unknown (general policy)' if general_policy else sub_type}")
+            p2.button(
+                "Change plan",
+                key=f"cxl_change_plan_{asset.id}",
+                width="stretch",
+                on_click=_set_state,
+                args=(plan_key, None),
+            )
 
-    plan = asset.cancel_policy.get_owner_cancellation_plan(
-        service=asset.service,
-        service_address=asset.service_address,
-        username=asset.username,
-    )
-
-    portal_url = plan.get("portal_url") or asset.cancel_policy.target_url or asset.service_address
-    if portal_url and portal_url.startswith("http"):
-        st.link_button(
-            f"🔗 Open {asset.service} Cancellation / Account Settings",
-            portal_url,
-            type="primary",
-            width="stretch",
-            help="Opens the provider portal in a new tab so you can follow the steps below.",
-        )
-
-    # 1. Step-by-Step Instructions (Built for all types associated with this asset)
-    st.markdown("#### 📋 Step-by-Step Instructions")
-    steps = []
-
-    if asset.has_type("Subscription"):
-        sub_i = asset.get_info("Subscription")
-        sub_cost_str = sub_i.get_cost_display() if sub_i else asset.cost_display
-        steps.append(f"Sign in to {asset.service} ({asset.username}) and navigate to Subscription / Billing.")
-        steps.append(f"Cancel the active recurring subscription ({sub_cost_str}) to prevent further renewal charges.")
-
-    if asset.has_type("Cloud Storage"):
-        cl_i = asset.get_info("Cloud Storage")
-        used_str = f"{cl_i.used_storage_gb:.1f} GB" if cl_i and cl_i.used_storage_gb is not None else "stored files"
-        steps.append(f"Download or export critical data ({used_str}) using provider takeout or local backup before storage termination.")
-        steps.append("Revoke shared links and downgrade storage plan.")
-
-    if asset.has_type("Crypto / Finance"):
-        steps.append(f"Withdraw or transfer remaining balance ({asset.cost_display}) to an external verified bank or secure wallet.")
-        steps.append("Verify there are no open limit orders, pending staking periods, or outstanding debts.")
-        steps.append("Navigate to Security / Settings > Close Account or submit an account termination ticket.")
-
-    if asset.has_type("Social Media"):
-        steps.append(f"Export social media archives, photos, and messages before closing the profile.")
-        steps.append("Decide between profile deactivation, permanent deletion, or legacy memorialization.")
-
-    if not steps:
-        steps = plan.get("steps", [f"Sign in to {asset.service} and submit an account closure request."])
-
-    for idx, step in enumerate(steps, 1):
-        st.markdown(f"**{idx}.** {step}")
-
-    # Documents required (if any)
-    req_docs = asset.cancel_policy.required_documents or asset.death_policy.required_documents
-    if req_docs:
-        st.markdown("##### 📑 Required Documentation (if contacting legal/support)")
-        for doc in req_docs:
-            st.markdown(f"- {doc}")
-
-    # 2. Recommended Preparation Tasks
-    st.markdown("#### ⚡ Recommended Tasks Prior to Closure")
-    t1, t2 = st.columns(2)
-    with t1:
-        st.markdown("- **Export Receipts & Invoices**: Download historical billing receipts before access is revoked.")
-        st.markdown("- **Check Linked Services (SSO)**: Ensure no external websites use this account to log in.")
-    with t2:
-        st.markdown("- **Billing Cut-off**: Complete cancellation at least 24-48 hours before renewal to prevent charges.")
-        st.markdown("- **Verify Bank Authorizations**: Ensure recurring debit agreements are marked cancelled.")
-
-    # 3. Prepared Support Email Draft
-    st.markdown("#### ✉️ Prepared Support Cancellation Email")
-    st.caption("If direct web cancellation is unavailable or the account is locked, copy this pre-formatted email to support:")
-
-    email_draft = plan.get("email_draft", "")
-    st.text_area(
-        "Support Email Format",
-        email_draft,
-        height=130,
-        key=f"dialog_email_draft_{asset.id}",
-    )
-
-    support_email = plan.get("support_email") or asset.cancel_policy.support_email
-    if support_email:
-        mailto_url = f"mailto:{support_email}?subject=Cancellation%20Request%20-%20{asset.service}&body={email_draft.replace(chr(10), '%0D%0A')}"
-        st.link_button(f"✉️ Send Email to {support_email}", mailto_url, width="stretch")
+    if isinstance(researched, CancelPolicy):
+        render_researched_cancellation(asset, researched, sub_type, general_policy)
+    elif researched is not None:
+        st.error(f"Could not research the cancellation policy: {researched}")
+        if rag_engine is not None:
+            st.button(
+                "🔄 Retry Research",
+                key=f"cxl_retry_{asset.id}",
+                on_click=lambda: st.session_state.researched_cancel_policies.pop((asset.id, sub_type), None),
+            )
 
     st.divider()
 
-    # 4. Confirmation buttons
+    # Confirmation buttons
     c_cancel, c_confirm = st.columns([1, 1], gap="medium", vertical_alignment="center")
     with c_cancel:
         if st.button("Keep Active / Dismiss", width="stretch", key=f"dlg_close_cancel_{asset.id}"):
@@ -576,7 +804,6 @@ def cancellation_guide_dialog(asset: Asset):
             st.success(f"{asset.service} successfully marked as cancelled! Monthly spend updated.")
             st.rerun()
 
-    st.caption("Was this account added by mistake? You can remove it from vault tracking instead.")
     if st.button("🗑️ Remove Account from Vault Instead", key=f"dlg_switch_remove_{asset.id}", width="stretch"):
         remove_account_dialog(asset)
 
