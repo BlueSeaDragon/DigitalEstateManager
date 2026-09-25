@@ -430,6 +430,10 @@ class Asset(BaseModel):
 
     # Lifecycle & Ownership
     heir: str = Field(default="Unassigned", description="Designated heir or executor responsible")
+    wish: str = Field(
+        default="",
+        description="The owner's own short note on what should happen to this account after death (e.g. 'pass to Jordan')",
+    )
     status: AssetStatus = Field(default="Active", description="Execution status")
     notes: Optional[str] = Field(default=None, description="Additional context or account notes")
     user_verified: bool = Field(
@@ -665,6 +669,7 @@ class Asset(BaseModel):
         category_raw = str(row.get("Type", row.get("Types", "Other"))).strip()
         cost_raw = str(row.get("Cost", "N/A")).strip()
         heir = str(row.get("Heir", "Unassigned")).strip()
+        wish = row.get("My Wish", "")
         action_name = str(row.get("Action", "Cancel")).strip()
         status = row.get("Status", "Active")
         asset_id = str(row.get("id", str(uuid.uuid4())[:8]))
@@ -725,6 +730,7 @@ class Asset(BaseModel):
             cancel_policy=cancel_policy,
             asset_infos=infos,
             heir=heir,
+            wish=wish.strip() if isinstance(wish, str) else "",
             status=status if status in ["Active", "Pending Review", "In Progress", "Completed", "Cancelled", "Archived", "Removed", "Wrongly Attributed"] else "Active",
             notes=str(row.get("Notes", "")) if "Notes" in row else None,
         )
@@ -738,6 +744,7 @@ class Asset(BaseModel):
             "Type": self.category,
             "Cost": self.cost_display,
             "Heir": self.heir,
+            "My Wish": self.wish,
             "Action": self.action,
             "Status": self.status,
         }

@@ -334,6 +334,12 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
     with col_o2:
         action_input = st.selectbox("Planned action", ACTIONS, key="modal_action")
 
+    wish_input = st.text_input(
+        "Your wish for this account (optional)",
+        placeholder="e.g. pass to Jordan, cancel, deactivate",
+        max_chars=120,
+        key="modal_wish",
+    )
     notes_input = st.text_input("Notes (optional)", key="modal_notes")
 
     cancel_clicked, save_clicked = dialog_footer("Cancel", "Add asset", "modal_save")
@@ -403,6 +409,7 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             cancel_policy=default_cancel,
             asset_infos=infos_to_add,
             heir=heir_input.strip() or "Unassigned",
+            wish=wish_input.strip(),
             status="Active",
             notes=notes_input.strip() if notes_input else None,
         )
@@ -596,6 +603,8 @@ def owner_details(asset: Asset, key: str) -> None:
     facts: Dict[str, object] = {"Account": asset.username or "Not recorded", "Website": asset.service_address}
     facts.update(asset_facts(asset))
     facts["Responsible heir"] = asset.heir
+    if asset.wish:
+        facts["Your wish"] = asset.wish
     facts["Planned action"] = asset.action
     if asset.notes and not asset.evidence and asset.user_verified:
         facts["Notes"] = asset.notes
@@ -691,6 +700,8 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
     facts: Dict[str, object] = {"Account": asset.username or "Not recorded", "Website": asset.service_address}
     facts.update(asset_facts(asset))
     facts["Responsible heir"] = asset.heir
+    if asset.wish:
+        facts["Your wish"] = asset.wish
     facts["Action"] = cancel_pol.action_name
     ui.definition_list(facts)
 
@@ -1160,6 +1171,9 @@ elif page == "Assets":
                 column_config={
                     "Service Address": st.column_config.LinkColumn("Website"),
                     "Username": st.column_config.TextColumn("Account"),
+                    "My Wish": st.column_config.TextColumn(
+                        "Your wish", help="Your own short note for after your death, e.g. 'pass to Jordan'", max_chars=120
+                    ),
                     "Cost": st.column_config.TextColumn("Cost / value"),
                     "Action": st.column_config.SelectboxColumn("Action", options=ACTIONS),
                     "Status": st.column_config.SelectboxColumn("Status", options=STATUSES),
