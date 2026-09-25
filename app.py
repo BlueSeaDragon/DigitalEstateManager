@@ -925,20 +925,22 @@ def owner_rows(assets: List[Asset], prefix: str) -> None:
     for asset in assets:
         row_key = f"{prefix}_{asset.id}"
         with st.container(key=f"row_{row_key}"):
-            c1, c2, c3, c4, c5 = st.columns(ROW, vertical_alignment="center")
-            with c1:
-                ui.cell(display_name(asset), subtitle(asset), strong=True)
-            with c2:
-                ui.cell(categories_display(asset))
-            with c3:
-                value = value_display(asset)
-                ui.cell(monthly_display(asset), f"Value {value}" if value else None)
-            with c4:
-                st.markdown(ui.status_label(owner_status(asset)), unsafe_allow_html=True)
             is_open = row_key in st.session_state.open_rows
-            with c5:
-                st.button("Hide" if is_open else "Details", type="tertiary", key=f"toggle_{row_key}",
-                          on_click=toggle_row, args=(row_key,))
+            # The whole row toggles the details: the button stretches over it (see styles.py).
+            with st.container(key=f"rowhead_{row_key}"):
+                c1, c2, c3, c4, c5 = st.columns(ROW, vertical_alignment="center")
+                with c1:
+                    ui.cell(display_name(asset), subtitle(asset), strong=True)
+                with c2:
+                    ui.cell(categories_display(asset))
+                with c3:
+                    value = value_display(asset)
+                    ui.cell(monthly_display(asset), f"Value {value}" if value else None)
+                with c4:
+                    st.markdown(ui.status_label(owner_status(asset)), unsafe_allow_html=True)
+                with c5:
+                    st.button("Hide" if is_open else "Details", type="tertiary", key=f"toggle_{row_key}",
+                              on_click=toggle_row, args=(row_key,))
             if is_open:
                 with st.container(key=f"details_{row_key}"):
                     owner_details(asset, row_key)
@@ -999,17 +1001,19 @@ def executor_rows(assets: List[Asset], prefix: str) -> None:
     for asset in sorted(assets, key=lambda a: (-monthly_cost_chf(a), display_name(a).lower())):
         row_key = f"{prefix}_{asset.id}"
         with st.container(key=f"row_{row_key}"):
-            c1, c2, c3, c4 = st.columns(EXECUTOR_ROW, vertical_alignment="center")
-            with c1:
-                ui.cell(display_name(asset), subtitle(asset), strong=True)
-            with c2:
-                ui.cell(monthly_display(asset), categories_display(asset))
-            with c3:
-                st.markdown(ui.status_label(status_text(asset.status)), unsafe_allow_html=True)
             is_open = row_key in st.session_state.open_rows
-            with c4:
-                st.button("Hide" if is_open else "Details", type="tertiary", key=f"toggle_{row_key}",
-                          on_click=toggle_row, args=(row_key,))
+            # The whole row toggles the details: the button stretches over it (see styles.py).
+            with st.container(key=f"rowhead_{row_key}"):
+                c1, c2, c3, c4 = st.columns(EXECUTOR_ROW, vertical_alignment="center")
+                with c1:
+                    ui.cell(display_name(asset), subtitle(asset), strong=True)
+                with c2:
+                    ui.cell(monthly_display(asset), categories_display(asset))
+                with c3:
+                    st.markdown(ui.status_label(status_text(asset.status)), unsafe_allow_html=True)
+                with c4:
+                    st.button("Hide" if is_open else "Details", type="tertiary", key=f"toggle_{row_key}",
+                              on_click=toggle_row, args=(row_key,))
             if is_open:
                 with st.container(key=f"details_{row_key}"):
                     executor_details(asset, row_key)
@@ -1365,10 +1369,6 @@ def show_to_review() -> None:
     st.session_state.owner_filter = "To review"
 
 
-def plural(n: int, one: str, many: str) -> str:
-    return f"{n} {one if n == 1 else many}"
-
-
 active_pool = [a for a in current_assets if a.status != "Removed"]
 removed_list = [a for a in current_assets if a.status == "Removed"]
 page = st.session_state.active_page
@@ -1381,19 +1381,7 @@ if page == "Assets" and role == "Owner":
     unconfirmed = [a for a in active_pool if not a.user_verified]
     scanned = st.session_state.get("scanned")
 
-    if not scanned:
-        action_col = ui.page_header(
-            "Know what you leave behind.",
-            "Most people have dozens of accounts no one else knows about. "
-            "Scan your transactions to build the inventory your heirs will need.",
-            eyebrow="Your digital estate",
-        )
-    else:
-        action_col = ui.page_header(
-            plural(len(active_pool), "account your heirs will need to find.", "accounts your heirs will need to find."),
-            "Confirm what the scan found, then note what should happen to each one.",
-            eyebrow="Your digital estate",
-        )
+    action_col = ui.page_header("Accounts and subscriptions", eyebrow="Inventory")
     with action_col:
         with st.container(horizontal=True, horizontal_alignment="right"):
             if not scanned:
@@ -1496,23 +1484,17 @@ if page == "Assets" and role == "Owner":
 # =============================================================================
 elif page == "Assets":
     estate = [a for a in current_assets if a.status not in ("Removed", "Wrongly Attributed")]
-    still_open = [a for a in estate if a.status not in CLOSED]
-    monthly = sum(monthly_cost_chf(a) for a in still_open)
     named = (st.session_state.get("deceased_name") or "").strip()
-    eyebrow = f"Estate of {named}" if named else "Estate settlement"
+    eyebrow = "Estate settlement"
 
     if not estate:
-        ui.page_header("Nothing on file yet.", "The owner's inventory is empty. Scan the deceased's bank "
+        ui.page_header("Estate overview", "The owner's inventory is empty. Scan the deceased's bank "
                        "statements to find their accounts.", eyebrow=eyebrow)
         st.button("Find accounts", type="primary", key="exec_discover", on_click=go_to, args=("Discover",))
     else:
-        if still_open:
-            title = plural(len(still_open), "account left to close.", "accounts left to close.")
-            lead = (f"About {chf(monthly)} a month is still being charged. Largest charges first."
-                    if monthly else "None of them is still charging. Largest charges first.")
-        else:
-            title, lead = "Every account is closed.", "The estate's digital accounts are settled."
-        action_col = ui.page_header(title, lead, eyebrow=eyebrow)
+        # An overview, not a verdict: not every account has to be closed (some pass to an heir).
+        title = f"Estate of {named}" if named else "Estate overview"
+        action_col = ui.page_header(title, eyebrow=eyebrow)
         with action_col:
             with st.container(horizontal=True, horizontal_alignment="right"):
                 st.download_button(
@@ -1524,13 +1506,6 @@ elif page == "Assets":
                     key="exec_csv",
                     on_click="ignore",
                 )
-
-        with_policy = sum(1 for a in estate if a.death_policy.ai_generated and a.death_policy.policy_found)
-        ui.kpi_strip([
-            (chf(monthly), "per month still being charged", bool(monthly)),
-            (f"{len(estate) - len(still_open)} of {len(estate)}", "accounts closed", False),
-            (str(with_policy), "with the provider's policy on file", False),
-        ])
 
         st.text_input("Name of the deceased", key="deceased_name", placeholder="Full name",
                       width=420)
@@ -1566,12 +1541,7 @@ elif page == "Assets":
 # PAGE: DISCOVER
 # =============================================================================
 else:
-    if role == "Owner":
-        ui.page_header("Find the accounts you forgot.", "We look for recurring payments in bank transactions "
-                       "and billing emails, and show you why we think each one is yours.", eyebrow="Discovery")
-    else:
-        ui.page_header("Find what the owner didn't list.", "Scan the latest bank statements for accounts "
-                       "opened since the owner's last update.", eyebrow="Discovery")
+    ui.page_header("Find accounts", eyebrow="Discovery")
 
     oauth_message = st.session_state.pop("oauth_message", None)
     if oauth_message:

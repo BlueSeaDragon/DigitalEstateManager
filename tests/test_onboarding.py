@@ -74,8 +74,8 @@ def test_full_flow_reaches_the_dashboard(app):
     assert_clean(app)
     assert app.session_state["onboarding"] == "done"
     assert app.session_state["active_page"] == "Assets"
-    assert "dlv-kpis" in text(app)
-    assert "accounts your heirs will need to find." in app.title[0].value
+    assert 'class="dlv-kpis"' in text(app)
+    assert app.title[0].value == "Accounts and subscriptions"
 
 
 def test_executor_sees_the_estate_after_the_owner_scanned(app):
@@ -93,5 +93,5 @@ def test_executor_sees_the_estate_after_the_owner_scanned(app):
     app.session_state["role"] = "Executor"
     app.run()
     assert_clean(app)
-    assert "per month still being charged" in text(app)
-    assert "accounts left to close." in app.title[0].value
+    assert app.title[0].value == "Estate overview"
+    assert 'class="dlv-kpis"' not in text(app)

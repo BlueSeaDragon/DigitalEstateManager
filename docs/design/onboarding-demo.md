@@ -114,8 +114,8 @@ The jury works on the post-death side, so the one-minute video is now: owner sca
 line on the magic moment and a matching toggle on the owner overview (a stored preference; nothing sends
 reminders yet).
 
-- **Worklist** (executor start page): headline "N accounts left to close.", CHF per month still being
-  charged, how many are closed, accounts with the provider's policy on file. Sorted by monthly cost,
+- **Worklist** (executor start page): title "Estate of Anna Muster" (or "Estate overview"), then the
+  deceased's name and the list, with no KPI strip. Sorted by monthly cost,
   largest first; rows keep their place when marked done, so nothing jumps on camera.
 - **No automatic cancellation.** Providers need a death certificate and proof of authority through their own
   process; DEM prepares the policy, documents and letter.
@@ -128,5 +128,6 @@ reminders yet).
 - **Executor looks different on purpose:** navy sidebar and navy role band, navy eyebrows, and its own
   navigation labels (Worklist / Find accounts instead of Inventory / Find accounts), so the cut from owner
   to executor reads at a glance in the video.
-- **Page headers:** small eyebrow with a rule (orange for owner, navy for executor), a 34px headline in
-  sentence form that states the situation ("20 accounts your heirs will need to find."), one muted line.
+- **Page headers:** small eyebrow with a rule (orange for owner, navy for executor), a plain 34px title
+  ("Accounts and subscriptions", "Estate overview", "Find accounts"), no line underneath.
+  No taglines: titles name the page, and not every account is closed.
