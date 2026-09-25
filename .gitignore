@@ -233,3 +233,6 @@ config/*.json
 credentials*.json
 client_secret*.json
 token*.json
+
+# Owner wishes saved by the app (personal data)
+data/wishes.json

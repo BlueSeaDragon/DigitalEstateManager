@@ -18,21 +18,27 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "ddgs>=9.0",
     # Cancellation engine (backend/) used by the cancellation guide
-    "openai>=1.0",
     "fpdf2>=2.7",
-    # Also required, installed from the local folder (not from PyPI):
-    #   pip install -e ./subscription_finder
+    "openai>=1.30",
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.2",
+    "uvicorn",
+    "fastapi"
+
 ]
 
 [project.optional-dependencies]
 dev = [
     "black",
     "ruff",
-    "pytest"
+    "pytest>=7"
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.scripts]
+subscription-finder = "subscription_finder.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

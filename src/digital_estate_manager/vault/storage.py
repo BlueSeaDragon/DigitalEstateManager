@@ -1,5 +1,8 @@
 """Storage and Estate Metrics Helper."""
 
+import json
+import os
+from pathlib import Path
 from typing import Any, Dict, List
 
 from digital_estate_manager.currency import chf, to_chf
@@ -12,8 +15,63 @@ from digital_estate_manager.models.schemas import (
     SocialMediaAssetInfo,
     SubscriptionAssetInfo,
 )
-from digital_estate_manager.policies.legacy import with_legacy_record
+from digital_estate_manager.policies.legacy import provider_key, with_legacy_record
 from digital_estate_manager.policies.rules import get_policies_for_service
+
+# Choices for the owner's wish; "" means no wish set.
+WISH_OPTIONS = ["", "Cancel/Deactivate", "Memorialize", "Pass to heir", "Other"]
+_OLD_WISHES = {  # options that were merged into "Cancel/Deactivate" after wishes were saved
+    "Cancel": "Cancel/Deactivate",
+    "Deactivate": "Cancel/Deactivate",
+    "Delete account": "Cancel/Deactivate",
+}
+WISH_FILE = Path(__file__).resolve().parents[3] / "data" / "wishes.json"
+
+
+def split_wish(wish: str) -> tuple:
+    """'Other: give the photos to my sister' -> ('Other', 'give the photos to my sister'); any other wish -> (wish, '')."""
+    choice, _, detail = wish.partition(":")
+    return ("Other", detail.strip()) if choice == "Other" else (wish, "")
+
+
+def join_wish(choice: str, detail: str = "") -> str:
+    """The wish as saved: the choice, plus the owner's short text for 'Other'."""
+    detail = detail.strip()
+    return f"Other: {detail}" if choice == "Other" and detail else choice
+
+
+def _wish_key(asset: Asset) -> str:
+    """Stable id of an account: 'drive.google.com|jordan.backup@gmail.com' (asset ids change per session)."""
+    return f"{provider_key(asset.service_address) or asset.service.strip().lower()}|{asset.username.strip().lower()}"
+
+
+def load_wishes() -> Dict[str, str]:
+    """The saved wishes; empty if the file is missing or broken."""
+    try:
+        data = json.loads(WISH_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_wishes(assets: List[Asset]) -> None:
+    """Save the wish of every given account (empty ones too, so they override the demo defaults)."""
+    wishes = load_wishes()
+    wishes.update({_wish_key(a): a.wish for a in assets})
+    WISH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = WISH_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(wishes, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(tmp, WISH_FILE)
+
+
+def apply_saved_wishes(assets: List[Asset]) -> List[Asset]:
+    """Put the saved wishes on matching accounts (in place)."""
+    wishes = load_wishes()
+    for asset in assets:
+        saved = wishes.get(_wish_key(asset))
+        if isinstance(saved, str):
+            asset.wish = _OLD_WISHES.get(saved, saved)
+    return assets
 
 
 def get_default_assets() -> List[Asset]:
@@ -23,7 +81,7 @@ def get_default_assets() -> List[Asset]:
     g_death, g_cancel = get_policies_for_service("Google Drive", "https://drive.google.com")
     cb_death, cb_cancel = get_policies_for_service("Coinbase", "https://coinbase.com")
 
-    return [
+    assets = [
         Asset(
             service="Spotify",
             service_address="https://spotify.com",
@@ -39,7 +97,7 @@ def get_default_assets() -> List[Asset]:
                 payment_method_hint="Visa ending 4242",
             ),
             heir="Alex",
-            wish="Cancel",
+            wish="Cancel/Deactivate",
             status="Active",
             notes="Personal Spotify Premium account",
         ),
@@ -84,7 +142,7 @@ def get_default_assets() -> List[Asset]:
                 ),
             ],
             heir="Jordan",
-            wish="Pass to Jordan, keep the family photos",
+            wish="Pass to heir",
             status="Active",
             notes="100GB Google One storage plan & active recurring subscription",
         ),
@@ -113,7 +171,7 @@ def get_default_assets() -> List[Asset]:
                 ),
             ],
             heir="Alex",
-            wish="Pass to Alex",
+            wish="Pass to heir",
             status="Active",
             notes="Crypto exchange wallet with active Coinbase One membership",
         ),
@@ -158,11 +216,12 @@ def get_default_assets() -> List[Asset]:
                 ),
             ],
             heir="Jordan",
-            wish="Deactivate",
+            wish="Cancel/Deactivate",
             status="Active",
             notes="Professional profile and active Premium Career subscription",
         ),
     ]
+    return apply_saved_wishes(assets)
 
 
 def monthly_cost_chf(asset: Asset) -> float:

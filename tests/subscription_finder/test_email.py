@@ -4,7 +4,7 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
-from conftest import FakeGmailService, FakeLLM, gmail_message
+from tests.subscription_finder.conftest import FakeGmailService, FakeLLM, gmail_message
 
 from subscription_finder.config import Settings
 from subscription_finder.extract.email_extractor import extract_emails, heuristic_extract

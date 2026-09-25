@@ -4,9 +4,9 @@ from pydantic import BaseModel
 import os
 import re
 
-from backend import rag_engine
-from backend import pdf_generator
-from backend.rag_engine import CancellationEngineError, Mode
+from cancel_policy_finder import rag_engine
+from cancel_policy_finder import pdf_generator
+from cancel_policy_finder.rag_engine import CancellationEngineError, Mode
 
 app = FastAPI(title="Digital Estate Manager - Cancellation Engine")
 

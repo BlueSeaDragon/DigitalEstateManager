@@ -21,7 +21,7 @@ CSS = f"""
     padding: 40px 48px !important;
 }}
 /* Tabular figures only where numbers line up; on body text Inter spaces hyphens oddly. */
-.dlv-kpi-value, .dlv-table td, .dlv-dl dd, .dlv-cell {{ font-variant-numeric: tabular-nums; }}
+.dlv-kpi-value, .dlv-dl dd, .dlv-cell {{ font-variant-numeric: tabular-nums; }}
 [data-testid="stDecoration"] {{ display: none; }}
 [data-testid="stHeader"] {{ background: transparent; }}
 
@@ -35,22 +35,43 @@ button, a[data-testid^="stBaseLinkButton"] {{ box-shadow: none !important; }}
 [data-testid="stSidebarContent"] {{ padding-top: 8px; }}
 .dlv-wordmark {{ font-size: 18px; font-weight: 700; color: {INK}; line-height: 1.2; }}
 .dlv-wordmark-caption {{ font-size: 13px; color: {MUTED}; margin-top: 2px; }}
-.st-key-active_page [role="radiogroup"] {{ gap: 0; }}
-.st-key-active_page [role="radiogroup"] > label {{
+.st-key-nav [role="radiogroup"] {{ gap: 0; }}
+.st-key-nav [role="radiogroup"] > label {{
     width: 100%;
     margin: 0;
     padding: 8px 12px;
     border-left: 2px solid transparent;
     border-radius: 0;
 }}
-.st-key-active_page [role="radiogroup"] > label > div:first-child {{ display: none; }}
-.st-key-active_page [role="radiogroup"] > label p {{ font-size: 15px; color: {MUTED}; }}
-.st-key-active_page [role="radiogroup"] > label:has(input:checked) {{ border-left-color: {ORANGE}; background: #FFFFFF; }}
-.st-key-active_page [role="radiogroup"] > label:has(input:checked) p {{ color: {INK}; font-weight: 600; }}
-.st-key-view_as_block {{ margin-top: 40px; padding-top: 16px; border-top: 1px solid {RULE}; }}
+.st-key-nav [role="radiogroup"] > label > div:first-child {{ display: none; }}
+.st-key-nav [role="radiogroup"] > label p {{ font-size: 15px; color: {MUTED}; }}
+.st-key-nav [role="radiogroup"] > label:has(input:checked) {{ border-left-color: {ORANGE}; background: #FFFFFF; }}
+.st-key-nav [role="radiogroup"] > label:has(input:checked) p {{ color: {INK}; font-weight: 600; }}
+
+/* ---- Role band: which view this is, and the switch. Top of every page. ---- */
+.st-key-role_bar {{
+    background: {SURFACE}; border-left: 3px solid {ORANGE}; border-radius: 4px;
+    padding: 10px 12px 10px 20px; margin-bottom: 40px;
+}}
+.dlv-role {{ display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }}
+.dlv-role-name {{ font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: {INK}; }}
+.dlv-role-text {{ font-size: 14px; color: {MUTED}; }}
+.st-key-role_bar [data-testid="stElementContainer"] {{ margin: 0; }}
+.st-key-role_bar [data-testid="stMarkdownContainer"] {{ margin: 0; }}
+
+/* ---- Page header: eyebrow, headline, one muted line ---- */
+.dlv-eyebrow {{
+    display: flex; align-items: center; gap: 10px; margin: 0 0 10px 0;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: {ORANGE};
+}}
+.dlv-eyebrow::before {{ content: ""; width: 24px; height: 2px; background: currentColor; }}
+[data-testid="stMain"] h1 {{
+    font-size: 34px !important; line-height: 1.15 !important; letter-spacing: -0.02em;
+    padding: 0 0 8px 0 !important; text-wrap: balance;
+}}
+.dlv-subtitle {{ color: {MUTED}; margin: 0 0 8px 0; font-size: 17px; line-height: 1.45; max-width: 640px; }}
 
 /* ---- Text helpers ---- */
-.dlv-subtitle {{ color: {MUTED}; margin: -4px 0 16px 0; font-size: 15px; }}
 .dlv-label {{
     font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
     color: {MUTED}; margin: 0 0 8px 0;
@@ -91,7 +112,7 @@ button, a[data-testid^="stBaseLinkButton"] {{ box-shadow: none !important; }}
 [class*="st-key-details_"] {{ background: {SURFACE}; padding: 16px 24px; margin-bottom: 8px; border-radius: 4px; }}
 
 /* ---- Hero: KPI strip ---- */
-.dlv-kpis {{ display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid {RULE}; border-radius: 4px; margin: 24px 0 8px 0; }}
+.dlv-kpis {{ display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid {RULE}; border-radius: 4px; margin: 24px 0 8px 0; }}
 .dlv-kpi {{ padding: 24px; border-left: 1px solid {RULE}; }}
 .dlv-kpi:first-child {{ border-left: none; }}
 .dlv-kpi-value {{ font-size: 28px; font-weight: 700; color: {INK}; line-height: 1.2; }}
@@ -113,17 +134,6 @@ button, a[data-testid^="stBaseLinkButton"] {{ box-shadow: none !important; }}
 .dlv-evidence h4 {{ font-size: 15px; font-weight: 600; margin: 0 0 12px 0; padding: 0; }}
 .dlv-evidence ul {{ margin: 4px 0 0 0; padding-left: 18px; color: {INK}; }}
 .dlv-evidence li {{ margin: 2px 0; }}
-
-/* ---- Category list (Overview) ---- */
-.dlv-table {{ width: 100%; border-collapse: collapse; margin: 0 0 8px 0; }}
-.dlv-table th, .dlv-table td {{ border: none; }}
-.dlv-table tr {{ border: none; background: transparent !important; }}
-.dlv-table th {{ text-align: left; background: transparent; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-    color: {MUTED}; padding: 8px 16px 8px 0; border-bottom: 1px solid {RULE}; }}
-.dlv-table td {{ padding: 10px 16px 10px 0; border-bottom: 1px solid {RULE}; color: {INK}; }}
-.dlv-table .num {{ text-align: right; }}
-.dlv-table .dlv-share {{ width: 30%; padding-left: 24px; }}
-.dlv-share span {{ display: block; height: 6px; background: {NAVY}; border-radius: 1px; }}
 
 /* ---- Scan step list ---- */
 .dlv-steps {{ list-style: none; margin: 8px 0 16px 0; padding: 0; }}
@@ -153,6 +163,36 @@ div[data-testid="stDialog"] [data-testid="stColumn"] div[data-testid="stMultiSel
     display: flex !important; flex-direction: column !important; flex: 1 1 auto !important;
     justify-content: flex-end !important; height: 100% !important;
 }}
+</style>
+"""
+
+# Executor view: the same layout on navy, so the switch of perspective is visible at a glance.
+NAVY_DEEP = "#00346A"
+ON_NAVY = "rgba(255, 255, 255, 0.72)"
+
+EXECUTOR_CSS = f"""
+<style>
+[data-testid="stSidebar"] {{ background: {NAVY} !important; }}
+[data-testid="stSidebar"] .dlv-wordmark {{ color: #FFFFFF; }}
+[data-testid="stSidebar"] .dlv-wordmark-caption {{ color: {ON_NAVY}; }}
+.st-key-nav [role="radiogroup"] > label p {{ color: {ON_NAVY}; }}
+.st-key-nav [role="radiogroup"] > label:has(input:checked) {{ background: {NAVY_DEEP}; }}
+.st-key-nav [role="radiogroup"] > label:has(input:checked) p {{ color: #FFFFFF; }}
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] svg {{ color: #FFFFFF; }}
+
+.st-key-role_bar {{ background: {NAVY}; }}
+.st-key-role_bar .dlv-role-name {{ color: #FFFFFF; }}
+.st-key-role_bar .dlv-role-text {{ color: {ON_NAVY}; }}
+/* !important: Streamlit styles segmented buttons with a more specific [kind]:not(:disabled) rule. */
+.st-key-role_bar button[kind="segmented_control"] {{
+    background: transparent !important; border-color: rgba(255, 255, 255, 0.4) !important; color: #FFFFFF !important;
+}}
+.st-key-role_bar button[kind="segmented_controlActive"] {{
+    background: #FFFFFF !important; border-color: #FFFFFF !important; color: {NAVY} !important;
+}}
+.st-key-role_bar button p {{ color: inherit; }}
+
+.dlv-eyebrow {{ color: {NAVY}; }}
 </style>
 """
 

@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from conftest import series, tx
+from tests.subscription_finder.conftest import series, tx
 
 from subscription_finder.detect.recurrence import find_recurring
 

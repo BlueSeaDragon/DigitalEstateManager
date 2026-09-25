@@ -1,7 +1,20 @@
-"""Tests for the owner's after-death wish on an asset."""
+"""Tests for the owner's after-death wish: the field, the table round trip and saving to data/wishes.json."""
+
+import pytest
 
 from digital_estate_manager.models import Asset
-from digital_estate_manager.vault import get_default_assets
+from digital_estate_manager.vault import get_default_assets, save_wishes, storage
+
+
+@pytest.fixture(autouse=True)
+def wish_file(tmp_path, monkeypatch):
+    path = tmp_path / "wishes.json"
+    monkeypatch.setattr(storage, "WISH_FILE", path)
+    return path
+
+
+def coinbase():
+    return next(a for a in get_default_assets() if a.service == "Coinbase")
 
 
 def test_wish_is_optional_and_empty_by_default():
@@ -10,11 +23,9 @@ def test_wish_is_optional_and_empty_by_default():
 
 
 def test_wish_survives_the_table_round_trip():
-    asset = next(a for a in get_default_assets() if a.service == "Coinbase")
-    assert asset.wish == "Pass to Alex"
-    row = asset.to_table_row()
-    assert row["My Wish"] == "Pass to Alex"
-    assert Asset.from_table_row(row).wish == "Pass to Alex"
+    row = coinbase().to_table_row()
+    assert row["My Wish"] == "Pass to heir"
+    assert Asset.from_table_row(row).wish == "Pass to heir"
 
 
 def test_empty_table_cells_give_an_empty_wish():
@@ -22,3 +33,49 @@ def test_empty_table_cells_give_an_empty_wish():
     for empty in (None, float("nan")):
         row = {"Service": "Netflix", "My Wish": empty}
         assert Asset.from_table_row(row).wish == ""
+
+
+def test_saved_wish_overrides_the_demo_default(wish_file):
+    assets = get_default_assets()
+    asset = next(a for a in assets if a.service == "Coinbase")
+    asset.wish = "Memorialize"
+    save_wishes(assets)
+    assert wish_file.exists()
+    assert coinbase().wish == "Memorialize"  # a fresh session picks it up
+
+
+def test_a_cleared_wish_stays_cleared():
+    assets = get_default_assets()
+    for a in assets:
+        a.wish = ""
+    save_wishes(assets)
+    assert all(a.wish == "" for a in get_default_assets())
+
+
+def test_missing_or_broken_file_keeps_the_defaults(wish_file):
+    assert coinbase().wish == "Pass to heir"
+    wish_file.write_text("{oops", encoding="utf-8")
+    assert coinbase().wish == "Pass to heir"
+
+
+def test_other_wish_carries_a_short_text():
+    assert storage.split_wish("Other: give the photos to my sister") == ("Other", "give the photos to my sister")
+    assert storage.split_wish("Other") == ("Other", "")
+    assert storage.split_wish("Memorialize") == ("Memorialize", "")
+    assert storage.join_wish("Other", "  give the photos  ") == "Other: give the photos"
+    assert storage.join_wish("Other", "") == "Other"
+    assert storage.join_wish("Cancel/Deactivate", "ignored") == "Cancel/Deactivate"
+
+
+def test_other_wish_text_is_saved_and_reloaded():
+    assets = get_default_assets()
+    for a in assets:
+        if a.service == "Coinbase":
+            a.wish = "Other: give the photos to my sister"
+    save_wishes(assets)
+    assert coinbase().wish == "Other: give the photos to my sister"
+
+
+def test_old_cancel_and_deactivate_wishes_become_one_option(wish_file):
+    wish_file.write_text('{"coinbase.com|alex.crypto@gmail.com": "Delete account"}', encoding="utf-8")
+    assert coinbase().wish == "Cancel/Deactivate"
