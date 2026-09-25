@@ -24,8 +24,8 @@ def test_wish_is_optional_and_empty_by_default():
 
 def test_wish_survives_the_table_round_trip():
     row = coinbase().to_table_row()
-    assert row["My Wish"] == "Pass to heir"
-    assert Asset.from_table_row(row).wish == "Pass to heir"
+    assert row["My Wish"] == "Pass to heir: Alex"
+    assert Asset.from_table_row(row).wish == "Pass to heir: Alex"
 
 
 def test_empty_table_cells_give_an_empty_wish():
@@ -53,9 +53,9 @@ def test_a_cleared_wish_stays_cleared():
 
 
 def test_missing_or_broken_file_keeps_the_defaults(wish_file):
-    assert coinbase().wish == "Pass to heir"
+    assert coinbase().wish == "Pass to heir: Alex"
     wish_file.write_text("{oops", encoding="utf-8")
-    assert coinbase().wish == "Pass to heir"
+    assert coinbase().wish == "Pass to heir: Alex"
 
 
 def test_other_wish_carries_a_short_text():
@@ -79,3 +79,27 @@ def test_other_wish_text_is_saved_and_reloaded():
 def test_old_cancel_and_deactivate_wishes_become_one_option(wish_file):
     wish_file.write_text('{"coinbase.com|alex.crypto@gmail.com": "Delete account"}', encoding="utf-8")
     assert coinbase().wish == "Cancel/Deactivate"
+
+
+def test_pass_to_heir_carries_the_heir_name():
+    assert storage.split_wish("Pass to heir: Jordan") == ("Pass to heir", "Jordan")
+    assert storage.split_wish("Pass to heir") == ("Pass to heir", "")
+    assert storage.join_wish("Pass to heir", " Jordan ") == "Pass to heir: Jordan"
+
+
+def test_pass_to_heir_makes_that_person_the_responsible_heir():
+    asset = coinbase()
+    storage.set_wish(asset, "Pass to heir: Jordan")
+    assert asset.heir == "Jordan"
+    storage.set_wish(asset, "Memorialize")  # other wishes leave the heir alone
+    assert asset.heir == "Jordan"
+
+
+def test_executor_only_sees_a_heir_for_pass_to_heir():
+    asset = coinbase()  # demo data: heir Alex, wish "Pass to heir: Alex"
+    assert storage.responsible_heir(asset) == "Alex"
+    for wish in ("Cancel/Deactivate", "Memorialize", "Other: give the photos away", ""):
+        storage.set_wish(asset, wish)
+        assert storage.responsible_heir(asset) == ""
+    storage.set_wish(asset, "Pass to heir")  # no name given yet
+    assert storage.responsible_heir(asset) == ""

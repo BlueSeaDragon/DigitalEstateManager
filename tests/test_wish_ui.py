@@ -40,3 +40,28 @@ def test_other_shows_a_short_text_box_and_saves_it(owner_card):
 def test_table_view_still_renders(owner_card):
     next(t for t in owner_card.toggle if t.label == "Table view").set_value(True).run()
     assert not owner_card.exception
+
+
+def test_pass_to_heir_asks_for_the_name(owner_card):
+    next(s for s in owner_card.selectbox if s.label == PICKER).select("Pass to heir").run()
+    next(t for t in owner_card.text_input if t.label == "Name of the heir").set_value("Jordan").run()
+    assert not owner_card.exception
+    assert "Pass to heir: Jordan" in json.loads(storage.WISH_FILE.read_text(encoding="utf-8")).values()
+
+
+def test_owner_card_no_longer_shows_heir_or_planned_action(owner_card):
+    text = " ".join(m.value for m in owner_card.markdown)
+    assert "Responsible heir" not in text and "Planned action" not in text
+
+
+def test_executor_view_shows_a_heir_only_for_pass_to_heir(tmp_path, monkeypatch):
+    monkeypatch.setattr(storage, "WISH_FILE", tmp_path / "wishes.json")
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    at.sidebar.radio[0].set_value("Assets").run()
+    at.session_state["role"] = "Executor"
+    at.run()
+    assert not at.exception
+    html = " ".join(m.value for m in at.markdown)
+    # demo data: Coinbase passes to Alex and Google Drive to Jordan; the other accounts have another wish
+    assert html.count('<span class="">Alex</span>') == 1
+    assert html.count('<span class="">Jordan</span>') == 1

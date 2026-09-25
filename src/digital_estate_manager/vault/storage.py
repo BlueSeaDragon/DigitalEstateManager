@@ -25,19 +25,34 @@ _OLD_WISHES = {  # options that were merged into "Cancel/Deactivate" after wishe
     "Deactivate": "Cancel/Deactivate",
     "Delete account": "Cancel/Deactivate",
 }
+WISH_WITH_TEXT = ("Pass to heir", "Other")  # choices that carry a short text: the heir's name, or the wish itself
 WISH_FILE = Path(__file__).resolve().parents[3] / "data" / "wishes.json"
 
 
 def split_wish(wish: str) -> tuple:
-    """'Other: give the photos to my sister' -> ('Other', 'give the photos to my sister'); any other wish -> (wish, '')."""
+    """'Pass to heir: Jordan' -> ('Pass to heir', 'Jordan'); a wish without text -> (wish, '')."""
     choice, _, detail = wish.partition(":")
-    return ("Other", detail.strip()) if choice == "Other" else (wish, "")
+    return (choice, detail.strip()) if choice in WISH_WITH_TEXT else (wish, "")
 
 
 def join_wish(choice: str, detail: str = "") -> str:
-    """The wish as saved: the choice, plus the owner's short text for 'Other'."""
+    """The wish as saved: the choice, plus the owner's short text where the choice takes one."""
     detail = detail.strip()
-    return f"Other: {detail}" if choice == "Other" and detail else choice
+    return f"{choice}: {detail}" if choice in WISH_WITH_TEXT and detail else choice
+
+
+def set_wish(asset: Asset, wish: str) -> None:
+    """Set an account's wish. 'Pass to heir: Jordan' also makes Jordan the responsible heir."""
+    asset.wish = wish
+    choice, name = split_wish(wish)
+    if choice == "Pass to heir" and name:
+        asset.heir = name
+
+
+def responsible_heir(asset: Asset) -> str:
+    """The heir to show to an executor: only for a "Pass to heir" wish, otherwise empty."""
+    choice, name = split_wish(asset.wish)
+    return name if choice == "Pass to heir" else ""
 
 
 def _wish_key(asset: Asset) -> str:
@@ -70,7 +85,7 @@ def apply_saved_wishes(assets: List[Asset]) -> List[Asset]:
     for asset in assets:
         saved = wishes.get(_wish_key(asset))
         if isinstance(saved, str):
-            asset.wish = _OLD_WISHES.get(saved, saved)
+            set_wish(asset, _OLD_WISHES.get(saved, saved))
     return assets
 
 
@@ -142,7 +157,7 @@ def get_default_assets() -> List[Asset]:
                 ),
             ],
             heir="Jordan",
-            wish="Pass to heir",
+            wish="Pass to heir: Jordan",
             status="Active",
             notes="100GB Google One storage plan & active recurring subscription",
         ),
@@ -171,7 +186,7 @@ def get_default_assets() -> List[Asset]:
                 ),
             ],
             heir="Alex",
-            wish="Pass to heir",
+            wish="Pass to heir: Alex",
             status="Active",
             notes="Crypto exchange wallet with active Coinbase One membership",
         ),
