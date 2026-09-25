@@ -18,12 +18,23 @@ from digital_estate_manager.discovery import (
 from digital_estate_manager.models import (
     Asset,
     CloudStorageAssetInfo,
+    DeathPolicy,
     FinancialAssetInfo,
     GenericAssetInfo,
     SocialMediaAssetInfo,
     SubscriptionAssetInfo,
 )
 from digital_estate_manager.policies import generate_action_email
+from digital_estate_manager.policies.legacy import (
+    AI_NOTICE,
+    apply_legacy_record,
+    days_since_checked,
+    is_stale,
+    legacy_record,
+    policy_marks,
+    provider_key,
+    refresh_legacy_policy,
+)
 from digital_estate_manager.policies.rules import get_policies_for_service
 from digital_estate_manager.ui import components as ui
 from digital_estate_manager.ui.format import (
@@ -125,6 +136,43 @@ def toggle_row(row_key: str) -> None:
 def matches_category(asset: Asset, category: str) -> bool:
     """Filter labels: Subscriptions / Finance / Cloud / Social / Other."""
     return any(category_label(t) == category for t in asset.types)
+
+
+MARK_WORDS = {"✔": "Yes", "✘": "No", "–": "Not stated"}
+
+
+def policy_answers(death_pol: DeathPolicy) -> Dict[str, str]:
+    """The crawler's tick boxes as words (the table and letters must stay free of symbols)."""
+    return {label: MARK_WORDS[mark] for label, mark in policy_marks(death_pol.tick_boxes)}
+
+
+def policy_source(death_pol: DeathPolicy) -> str:
+    if not death_pol.ai_generated:
+        return "Hand-written"
+    return "AI crawler" if death_pol.policy_found else "AI crawler, not found"
+
+
+def policy_link_label(death_pol: DeathPolicy) -> str:
+    if death_pol.policy_found is False:
+        return "Possibly useful link (unverified)"
+    if death_pol.policy_found:
+        return "Open policy source"
+    return "Open deceased-account page"
+
+
+def render_policy_summary(death_pol: DeathPolicy) -> None:
+    """Provider policy. AI-crawler text is labelled and comes with a caution."""
+    ui.section_label("Provider policy (AI-generated)" if death_pol.ai_generated else "Provider policy", first=True)
+    st.write(death_pol.summary)
+    if death_pol.ai_generated:
+        checked = f" Checked {death_pol.source_checked}." if death_pol.source_checked else ""
+        if is_stale(death_pol.source_checked):
+            checked += " This result is old; the owner can refresh it under Assets, Legacy policies."
+        st.caption(AI_NOTICE + checked)
+        if death_pol.policy_found:
+            ui.definition_list(policy_answers(death_pol))
+    if death_pol.security_warning:
+        ui.notice(death_pol.security_warning, "amber")
 
 
 # =============================================================================
@@ -637,10 +685,7 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
     facts["Action"] = cancel_pol.action_name
     ui.definition_list(facts)
 
-    ui.section_label("Provider policy", first=True)
-    st.write(death_pol.summary)
-    if death_pol.security_warning:
-        ui.notice(death_pol.security_warning, "amber")
+    render_policy_summary(death_pol)
 
     if cancel_pol.steps:
         ui.section_label("Checklist")
@@ -663,7 +708,7 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
         st.session_state[done_key] = asset.status in CLOSED
         st.checkbox("Action complete", key=done_key, disabled=is_flagged, on_change=set_done, args=(asset, done_key))
         if portal and portal.startswith("http"):
-            st.link_button("Open deceased-account page", portal, icon=":material/open_in_new:")
+            st.link_button(policy_link_label(death_pol), portal, icon=":material/open_in_new:")
         if is_flagged:
             st.button("Return to estate", type="tertiary", key=f"exec_reattrib_{key}",
                       on_click=flag_asset, args=(asset, False))
@@ -694,6 +739,69 @@ def executor_rows(assets: List[Asset], prefix: str, deceased_name: str) -> None:
             if is_open:
                 with st.container(key=f"details_{row_key}"):
                     executor_details(asset, row_key, deceased_name)
+
+
+def policy_row(asset: Asset) -> Dict[str, object]:
+    """One row of the owner's legacy-policy table."""
+    pol = asset.death_policy
+    link = pol.official_portal_url or asset.cancel_policy.target_url or asset.service_address
+    row: Dict[str, object] = {
+        "Service": asset.service,
+        "Source": policy_source(pol),
+        "Summary": pol.summary,
+        "Link": link if link and link.startswith("http") else None,
+    }
+    row.update(policy_answers(pol))
+    row["Checked"] = (pol.source_checked or "") + (" (old)" if is_stale(pol.source_checked) else "")
+    return row
+
+
+def look_up_policy(asset: Asset, host: str) -> None:
+    with st.spinner(f"Searching {host} for its legacy policy"):
+        problem = refresh_legacy_policy(asset.service_address)
+    if problem:
+        ui.notice(problem, "red")
+        return
+    record = legacy_record(asset.service_address)
+    for other in st.session_state.assets:
+        if provider_key(other.service_address) == host:
+            other.death_policy = apply_legacy_record(other.death_policy, record)
+    st.rerun()
+
+
+def legacy_policy_view(assets: List[Asset]) -> None:
+    """What each provider says happens to an account after death, gathered by the AI crawler."""
+    ui.notice("AI-generated summaries. " + AI_NOTICE, "amber")
+    if not assets:
+        ui.muted("No accounts here.")
+        return
+    st.dataframe(
+        pd.DataFrame([policy_row(a) for a in assets]),
+        width="stretch",
+        hide_index=True,
+        column_config={"Link": st.column_config.LinkColumn("Link")},
+    )
+
+    # One lookup per website with no result, no policy found, or an old result
+    to_look_up: Dict[str, Asset] = {}
+    for a in assets:
+        host, pol = provider_key(a.service_address), a.death_policy
+        if host and (not pol.ai_generated or pol.policy_found is False or is_stale(pol.source_checked)):
+            to_look_up.setdefault(host, a)
+    if not to_look_up:
+        return
+    ui.section_label("Look up or refresh")
+    st.caption("Searches the provider's website, 10 to 40 seconds each. Needs the Apertus token in `.env`.")
+    for host, a in to_look_up.items():
+        pol = a.death_policy
+        if not pol.ai_generated:
+            verb = "Look up"
+        elif is_stale(pol.source_checked):
+            verb = f"Refresh (checked {days_since_checked(pol.source_checked)} days ago)"
+        else:
+            verb = "Try again"
+        if st.button(f"{verb}: {a.service} ({host})", key=f"lookup_policy_{host}"):
+            look_up_policy(a, host)
 
 
 def inventory_csv(assets: List[Asset]) -> str:
@@ -877,11 +985,14 @@ elif page == "Assets":
                                           label_visibility="collapsed")
             show_removed = st.toggle(f"Show removed ({len(removed_list)})", key="show_removed")
             table_view = st.toggle("Table view", key="table_view")
+            policy_view = st.toggle("Legacy policies", key="policy_view")
 
         pool = removed_list if show_removed else active_pool
         shown = pool if choice == "All" else [a for a in pool if matches_category(a, choice)]
 
-        if table_view:
+        if policy_view:
+            legacy_policy_view([a for a in shown if a.status not in ("Removed", "Wrongly Attributed")])
+        elif table_view:
             df = pd.DataFrame([a.to_table_row() for a in shown])
             st.data_editor(
                 df,

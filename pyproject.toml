@@ -14,6 +14,9 @@ dependencies = [
     "pandas>=2.1.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0",
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "ddgs>=9.0",
     # Also required, installed from the local folder (not from PyPI):
     #   pip install -e ./subscription_finder
 ]
@@ -21,8 +24,13 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "black",
-    "ruff"
+    "ruff",
+    "pytest"
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
