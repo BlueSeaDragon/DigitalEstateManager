@@ -6,32 +6,21 @@ We all have hundred of accounts, subscriptions, drives, and other digital assets
 
 ## Feature 1: Privacy and safety
  
-<<<<<<< HEAD
 Clients can make sure their digital information stays accessible after they die, but only after they die. DEM uses a 2 keys authentication system. 
-=======
-Making full use of VZ structure for execution of will, clients can make sure their digital information stays accessible after die, but only after they die thanks to a 2 keys system: one for the client only and one securely stored until their death kept for the heir and their consultants 
->>>>>>> 0393690 (partial proper pitch)
 
 No pipsqueak when the client's alive and no hassle for the relatives afterwards.
 
 ## Feature 2: Easy extraction of accounts and subscriptions from email and bank statements
 
-<<<<<<< HEAD
 DEM uses AI to extract accounts and subscriptions from emails and bank statements. The client and their advisor obtain a clean list of assets, so they can make better-informed decisions for the future.
 
 DEM respects the level of exposure each client is comfortable with,they can add the assets they want manually instead of having their data processed by AI. 
 
 We use Aperture 1.5 hosted by SwissCom to ensure the data never leaves Switzerland and processing is privacy friendly.
-=======
-DEM uses Apertus as the AI brain for extraction of accounts and subscriptions from emails and bank statements, looking for regular transactions or emails that suggest account sign-ups. The client and their advisor obtain a clean list of accounts and subscriptions (called Assets), so they can make better-informed decisions for the future.
-
-DEM respects the level of exposure each client is comfortable with,they can add the assets they want manually instead of having their data processed by AI.
->>>>>>> 0393690 (partial proper pitch)
 
 
 ## Feature 3: Legacy an Cancellation policy gathering
 
-<<<<<<< HEAD
 DEM is more than a tool for listing digital assets, it helps you deal with them!
 
 DEM searches the account providers' website reliably for Legacy policies and account cancellation procedures and generates summaries and links to find them.
@@ -40,31 +29,6 @@ The heirs and legal executionner can take over the digital estate and manage it 
 
 DEM even assists in some of the steps, such as writing emails!
 
-=======
-DEM is structured with legacy in mind. Among the most cumbersome tasks is finding out what happens to an asset after death: what a provider does with it, what information they ask for, and what procedure to follow. 
-
-DEM helps clients and legal consultants find this information, based on each provider's policy crawled directly from its official website. For each provider (e.g. Google), DEM shows a short summary and a link to the official legacy policy page. Every summary links to its source page and carries a "checked" date, so advisors can easily verify it. The summaries are machine-generated information, not legal advice, and should be verified at the source.
-
-DEM also helps find cancellation policies: it informs the client or executor of their options, such as how to delete an account or cancel an unwanted subscription. This is especially helpful for an executor who is instructed to mass-delete accounts. As companies handle subscription and account termination differently, collecting this information in one place greatly improves efficiency. In addition, DEM guides the executor through cancellation and legacy recovery with step-by-step guides—for example, by autogenerating cancellation emails.
-
-This supports legal representatives after death, making it much easier to confirm which documents and steps a provider requires and carry them out, backed by AI-generated summaries that link back to the source. 
-
-To further help legal representatives carry out the client's will, each account has a "My Wish" field (for example: cancel, deactivate, or pass to heir), which the executor sees right next to the provider's policy. This lets clients record their wishes for their digital accounts and data based on the information provided by DEM.
-
-## Feature 4: Ethical and privacy-aware agentic AI
-
-The legacy-policy crawler is an agent powered by Apertus 1.5, the fully open Swiss language model built by EPFL, ETH Zurich and CSCS [2][3]. We access it through Swisscom, whose Swiss AI Platform keeps customer data in Switzerland [4]. Apertus was developed with due consideration to Swiss data protection and copyright laws and the transparency obligations of the EU AI Act [3].
-
-The Legacy policy and cancellation policies crawlers only ever reads public company web pages, so DEM keeps potentially sensitive client data away from big AI companies, which some clients may feel apprehensive about. It uses official pages only, respects `robots.txt` [5] and never logs in to accounts. Because Apertus is multilingual [3], it also handles Swiss providers' non-English pages: for example, a German Swisscom help page.
-
-## Feature 5: Easy integration into the VZ Financial Portal
-
-DEM is a standalone app that fits the VZ ecosystem. VZ clients already use the VZ Financial Portal on the web and as an iOS and Android app, with an overview of their banking and pension data, insurance and mortgages behind a secured login, with data kept in Switzerland [6][7]. DEM adds the missing digital layer: subscriptions and online accounts next to the assets the portal already shows.
-
-Two existing VZ features are a natural fit. VZ Safe already lets clients store documents such as a will or inheritance agreement digitally [1][6]; it could hold the second key or the executor's release documents. The portal's login could also serve as the single sign-in for DEM, so clients do not need another account. Data location matches too: the portal keeps data in Switzerland [6], and so does the Apertus model behind DEM [4].
-
-Technically, DEM keeps its logic (asset models, policies, extraction) in a separate Python package, with the user interface as a thin layer on top. VZ's developers can therefore reuse the logic behind their own portal screens, or embed DEM as a new section, without rebuilding it.
->>>>>>> 0393690 (partial proper pitch)
 
 ## References
 
