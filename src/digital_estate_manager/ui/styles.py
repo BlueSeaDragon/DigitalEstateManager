@@ -145,6 +145,19 @@ button, a[data-testid^="stBaseLinkButton"] {{ box-shadow: none !important; }}
 .dlv-evidence ul {{ margin: 4px 0 0 0; padding-left: 18px; color: {INK}; }}
 .dlv-evidence li {{ margin: 2px 0; }}
 
+/* ---- Provider policy after death: answers wrap into as many columns as fit ---- */
+.dlv-policy {{ background: #FFFFFF; border: 1px solid {RULE}; border-radius: 4px; padding: 16px 24px; margin: 0 0 4px 0; }}
+.dlv-policy-head {{ display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; margin: 0 0 8px 0; }}
+.dlv-policy-head h4 {{ font-size: 15px; font-weight: 600; margin: 0; padding: 0; }}
+.dlv-policy-meta {{ margin-left: auto; font-size: 13px; color: {MUTED}; }}
+.dlv-policy p {{ margin: 0 0 12px 0; color: {INK}; max-width: 72ch; }}
+.dlv-answers {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 24px;
+    margin: 0; padding-top: 12px; border-top: 1px solid {RULE}; }}
+.dlv-answers dt {{ font-size: 13px; color: {MUTED}; margin: 0 0 2px 0; }}
+.dlv-answers dd {{ margin: 0; }}
+.dlv-policy-note {{ display: block; margin-top: 12px; font-size: 13px; color: {MUTED}; }}
+[class*="st-key-polblock_"] {{ gap: 0; margin-bottom: 16px; }}
+
 /* ---- Scan step list ---- */
 .dlv-steps {{ list-style: none; margin: 8px 0 16px 0; padding: 0; }}
 .dlv-steps li {{ position: relative; padding: 4px 0 4px 24px; color: {MUTED}; }}

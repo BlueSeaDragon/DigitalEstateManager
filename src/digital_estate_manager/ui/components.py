@@ -135,6 +135,26 @@ def evidence_panel(asset: Asset) -> None:
     )
 
 
+ANSWER_TONES = {"Yes": "green", "No": "red"}
+
+
+def policy_panel(title: str, source: Tuple[str, str], summary: str, answers: Dict[str, str],
+                 meta: Optional[str] = None, note: Optional[str] = None) -> None:
+    """A provider's policy after death: source label, summary, and the crawler's answers in a grid that
+    wraps instead of scrolling sideways. `source` is (text, tone)."""
+    meta_html = f'<span class="dlv-policy-meta">{escape(meta)}</span>' if meta else ""
+    cells = "".join(
+        f"<div><dt>{escape(label)}</dt><dd>{status_label(value, ANSWER_TONES.get(value, 'muted'))}</dd></div>"
+        for label, value in answers.items()
+    )
+    answers_html = f'<dl class="dlv-answers">{cells}</dl>' if cells else ""
+    note_html = f'<small class="dlv-policy-note">{escape(note)}</small>' if note else ""
+    _html(
+        f'<div class="dlv-policy"><div class="dlv-policy-head"><h4>{escape(title)}</h4>'
+        f"{status_label(*source)}{meta_html}</div><p>{escape(summary)}</p>{answers_html}{note_html}</div>"
+    )
+
+
 def evidence_table(asset: Asset) -> None:
     """The matching transactions and emails, for the 'View evidence' expander."""
     rows = [
