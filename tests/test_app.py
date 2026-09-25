@@ -69,7 +69,7 @@ def test_pages_render_without_emoji(app, page, role):
 def test_inventory_is_the_start_page_and_offers_the_scan(app):
     assert_clean(app)
     assert app.session_state["active_page"] == "Assets"
-    assert app.title[0].value == "Know what you leave behind."
+    assert app.title[0].value == "Accounts and subscriptions"
     assert any(b.label == "Scan my digital footprint" for b in app.button)
     assert any(b.key.startswith("toggle_own_") for b in app.button if b.key)
 
@@ -80,9 +80,9 @@ def test_executor_view_is_marked_and_relabelled(app):
     assert_clean(app)
     text = rendered_text(app)
     assert "Executor view" in text and "Worklist" in text
-    assert "accounts left to close." in app.title[0].value
+    assert app.title[0].value == "Estate overview"
     app.text_input(key="deceased_name").input("Anna Muster").run()
-    assert "Estate of Anna Muster" in rendered_text(app)
+    assert app.title[0].value == "Estate of Anna Muster"
 
 
 def test_owner_details_show_actions(app):

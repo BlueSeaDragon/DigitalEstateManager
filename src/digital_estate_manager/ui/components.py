@@ -27,7 +27,7 @@ def inject_executor_styles() -> None:
 
 def wordmark(caption: str) -> None:
     _html(
-        '<div class="dlv-wordmark">Digital Legacy Manager</div>'
+        '<div class="dlv-wordmark">Digital Legacy<br>Manager</div>'
         f'<div class="dlv-wordmark-caption">{escape(caption)}</div>',
         st.sidebar,
     )

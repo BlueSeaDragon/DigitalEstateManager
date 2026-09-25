@@ -33,8 +33,10 @@ button, a[data-testid^="stBaseLinkButton"] {{ box-shadow: none !important; }}
 
 /* ---- Sidebar: wordmark, navigation with an orange active marker ---- */
 [data-testid="stSidebarContent"] {{ padding-top: 8px; }}
-.dlv-wordmark {{ font-size: 18px; font-weight: 700; color: {INK}; line-height: 1.2; }}
-.dlv-wordmark-caption {{ font-size: 13px; color: {MUTED}; margin-top: 2px; }}
+/* Wordmark: short orange rule, then the name set large and tight; the same in both roles. */
+.dlv-wordmark {{ font-size: 26px; font-weight: 700; color: {INK}; line-height: 1.05; letter-spacing: -0.025em; }}
+.dlv-wordmark::before {{ content: ""; display: block; width: 28px; height: 3px; background: {ORANGE}; margin-bottom: 12px; }}
+.dlv-wordmark-caption {{ font-size: 13px; color: {MUTED}; margin: 8px 0 28px 0; }}
 .st-key-nav [role="radiogroup"] {{ gap: 0; }}
 .st-key-nav [role="radiogroup"] > label {{
     width: 100%;
@@ -108,8 +110,16 @@ button, a[data-testid^="stBaseLinkButton"] {{ box-shadow: none !important; }}
 
 /* ---- Asset list rows ---- */
 .st-key-list_head {{ border-bottom: 1px solid {RULE}; padding-bottom: 4px; }}
-[class*="st-key-row_"] {{ border-bottom: 1px solid {RULE}; padding: 8px 0; }}
-[class*="st-key-details_"] {{ background: {SURFACE}; padding: 16px 24px; margin-bottom: 8px; border-radius: 4px; }}
+[class*="st-key-row_"] {{ border-bottom: 1px solid {RULE}; padding: 0; gap: 0; }}
+/* Clickable row: the Details button's ::after covers the row head. Everything between the head and the
+   button stays unpositioned so the overlay measures against the head, not the button's column. */
+[class*="st-key-rowhead_"] {{ position: relative; padding: 8px 0; }}
+[class*="st-key-rowhead_"] * {{ position: static; }}
+[class*="st-key-rowhead_"] [class*="st-key-toggle_"] button::after {{ content: ""; position: absolute; inset: 0; cursor: pointer; }}
+/* Hover tint reaches 12px past the text on both sides without shifting the columns. */
+[class*="st-key-rowhead_"]:hover {{ background: {SURFACE}; box-shadow: -12px 0 0 {SURFACE}, 12px 0 0 {SURFACE}; }}
+[class*="st-key-rowhead_"]:has(button:focus-visible) {{ outline: 2px solid {NAVY}; outline-offset: -2px; }}
+[class*="st-key-details_"] {{ background: {SURFACE}; padding: 16px 24px; margin: 4px 0 8px 0; border-radius: 4px; }}
 
 /* ---- Hero: KPI strip ---- */
 .dlv-kpis {{ display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid {RULE}; border-radius: 4px; margin: 24px 0 8px 0; }}
@@ -206,7 +216,9 @@ ONBOARDING_CSS = f"""
     display: none !important;
 }}
 [data-testid="stMainBlockContainer"] {{ padding-top: 24px !important; margin: 0 auto !important; }}
-.dlv-topbar {{ padding: 0 0 16px 0; border-bottom: 1px solid {RULE}; margin-bottom: 64px; }}
+.dlv-topbar {{ padding: 0 0 20px 0; border-bottom: 1px solid {RULE}; margin-bottom: 64px; }}
+.dlv-topbar .dlv-wordmark {{ display: inline-flex; align-items: center; gap: 14px; font-size: 24px; }}
+.dlv-topbar .dlv-wordmark::before {{ margin: 0; }}
 
 /* ---- Hero type ---- */
 .dlv-hero {{ max-width: 780px; }}
