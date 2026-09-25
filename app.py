@@ -49,7 +49,15 @@ from digital_estate_manager.ui.format import (
     subtitle,
     value_display,
 )
-from digital_estate_manager.vault import calculate_metrics, get_default_assets, monthly_cost_chf
+from digital_estate_manager.vault import (
+    WISH_OPTIONS,
+    calculate_metrics,
+    get_default_assets,
+    join_wish,
+    monthly_cost_chf,
+    save_wishes,
+    split_wish,
+)
 
 try:
     from subscription_finder import LLMConfigError, ReconnectRequired
@@ -334,12 +342,16 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
     with col_o2:
         action_input = st.selectbox("Planned action", ACTIONS, key="modal_action")
 
-    wish_input = st.text_input(
+    wish_input = st.selectbox(
         "Your wish for this account (optional)",
-        placeholder="e.g. pass to Jordan, cancel, deactivate",
-        max_chars=120,
+        WISH_OPTIONS,
+        format_func=lambda option: option or "Not set",
         key="modal_wish",
     )
+    wish_detail = ""
+    if wish_input == "Other":
+        wish_detail = st.text_input("Your wish, in a few words", max_chars=60, key="modal_wish_text",
+                                    placeholder="e.g. give the photos to my sister")
     notes_input = st.text_input("Notes (optional)", key="modal_notes")
 
     cancel_clicked, save_clicked = dialog_footer("Cancel", "Add asset", "modal_save")
@@ -409,12 +421,13 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             cancel_policy=default_cancel,
             asset_infos=infos_to_add,
             heir=heir_input.strip() or "Unassigned",
-            wish=wish_input.strip(),
+            wish=join_wish(wish_input, wish_detail),
             status="Active",
             notes=notes_input.strip() if notes_input else None,
         )
 
         st.session_state.assets.append(new_asset)
+        save_wishes([new_asset])
         notify(f"{new_asset.service} added.")
         st.rerun()
 
@@ -598,17 +611,38 @@ def set_status(asset: Asset, status: str, message: Optional[str] = None) -> None
         notify(message)
 
 
+def wish_picker(asset: Asset, key: str) -> None:
+    """The owner's wish as a dropdown, plus a short text for "Other". A change is saved to data/wishes.json."""
+    current, detail = split_wish(asset.wish)
+    options = WISH_OPTIONS + ([current] if current not in WISH_OPTIONS else [])
+    choice = st.selectbox(
+        "Your wish after death",
+        options,
+        index=options.index(current),
+        format_func=lambda option: option or "Not set",
+        key=f"wish_{key}_{current}",  # the wish in the key rebuilds the widget after an edit elsewhere
+    )
+    if choice == "Other":
+        detail = st.text_input("Your wish, in a few words", value=detail, max_chars=60,
+                               placeholder="e.g. give the photos to my sister",
+                               label_visibility="collapsed", key=f"wish_text_{key}_{asset.wish}")
+    wish = join_wish(choice, detail)
+    if wish != asset.wish:
+        asset.wish = wish
+        save_wishes(st.session_state.assets)
+        st.rerun()
+
+
 def owner_details(asset: Asset, key: str) -> None:
     """Definition list, evidence for detected items, and the contextual actions."""
     facts: Dict[str, object] = {"Account": asset.username or "Not recorded", "Website": asset.service_address}
     facts.update(asset_facts(asset))
     facts["Responsible heir"] = asset.heir
-    if asset.wish:
-        facts["Your wish"] = asset.wish
     facts["Planned action"] = asset.action
     if asset.notes and not asset.evidence and asset.user_verified:
         facts["Notes"] = asset.notes
     ui.definition_list(facts)
+    wish_picker(asset, key)
 
     detected = not asset.user_verified and asset.status != "Removed"
     if asset.evidence or asset.confidence_reasons:
@@ -701,7 +735,7 @@ def executor_details(asset: Asset, key: str, deceased_name: str) -> None:
     facts.update(asset_facts(asset))
     facts["Responsible heir"] = asset.heir
     if asset.wish:
-        facts["Your wish"] = asset.wish
+        facts["Owner's wish"] = asset.wish
     facts["Action"] = cancel_pol.action_name
     ui.definition_list(facts)
 
@@ -1164,21 +1198,36 @@ elif page == "Assets":
             legacy_policy_view([a for a in shown if a.status not in ("Removed", "Wrongly Attributed")])
         elif table_view:
             df = pd.DataFrame([a.to_table_row() for a in shown])
-            st.data_editor(
+            if not df.empty:  # the text of "Other" is edited on the account card
+                df["My Wish"] = df["My Wish"].map(lambda wish: split_wish(wish)[0])
+            edited = st.data_editor(
                 df,
                 width="stretch",
                 num_rows="dynamic",
                 column_config={
                     "Service Address": st.column_config.LinkColumn("Website"),
                     "Username": st.column_config.TextColumn("Account"),
-                    "My Wish": st.column_config.TextColumn(
-                        "Your wish", help="Your own short note for after your death, e.g. 'pass to Jordan'", max_chars=120
+                    "My Wish": st.column_config.SelectboxColumn(
+                        "Your wish", help="What should happen to this account after your death", options=WISH_OPTIONS[1:]
                     ),
                     "Cost": st.column_config.TextColumn("Cost / value"),
                     "Action": st.column_config.SelectboxColumn("Action", options=ACTIONS),
                     "Status": st.column_config.SelectboxColumn("Status", options=STATUSES),
                 },
             )
+            # Wish edits are saved; the other columns are not saved yet.
+            by_account = {(a.service, a.username): a for a in shown}
+            wish_changed = False
+            for row in edited.to_dict("records"):
+                asset = by_account.get((row.get("Service"), row.get("Username")))
+                new_wish = row.get("My Wish")
+                new_wish = new_wish if isinstance(new_wish, str) else ""
+                if asset and split_wish(asset.wish)[0] != new_wish:
+                    asset.wish = new_wish
+                    wish_changed = True
+            if wish_changed:
+                save_wishes(current_assets)
+                st.rerun()
         elif shown:
             owner_rows(shown, "own")
         elif show_removed:
