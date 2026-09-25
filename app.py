@@ -980,7 +980,10 @@ def executor_details(asset: Asset, key: str) -> None:
         if not is_flagged and asset.status not in CLOSED and st.button(
             close_action_label(asset), type="primary", key=f"{key}_exec_cancel"
         ):
-            cancellation_guide_dialog(asset, mode="after_death", deceased_name=deceased_name)
+            # The executor page's "Name of the deceased" field (key "deceased_name") prefills the letter
+            cancellation_guide_dialog(
+                asset, mode="after_death", deceased_name=st.session_state.get("deceased_name") or ""
+            )
         done_key = f"exec_done_{key}"
         st.session_state[done_key] = asset.status in CLOSED
         st.checkbox("Action complete", key=done_key, disabled=is_flagged, on_change=set_done, args=(asset, done_key))
