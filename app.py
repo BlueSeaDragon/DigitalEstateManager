@@ -413,6 +413,12 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             key="modal_action",
         )
 
+    wish_input = st.text_input(
+        "My Wish for this account after my death (Optional)",
+        placeholder="e.g. pass to Jordan, cancel, deactivate",
+        max_chars=120,
+        key="modal_wish",
+    )
     notes_input = st.text_input("Additional Notes (Optional)", key="modal_notes")
 
     st.divider()
@@ -485,6 +491,7 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
             cancel_policy=default_cancel,
             asset_infos=infos_to_add,
             heir=heir_input.strip() or "Unassigned",
+            wish=wish_input.strip(),
             status="Active",
             notes=notes_input.strip() if notes_input else None,
         )
@@ -767,6 +774,8 @@ if st.session_state.active_page == "Catalogue":
                             other_types = [t for t in sub.types if t != "Subscription"]
                             c1.caption(f"ℹ️ Also cataloged under: **{', '.join(other_types)}**")
                         c1.write(f"**Assigned Heir:** {sub.heir}")
+                        if sub.wish:
+                            c1.write(f"**My Wish:** {sub.wish}")
                         verified = c1.checkbox(
                             "I checked this subscription myself",
                             value=sub.user_verified,
@@ -846,6 +855,8 @@ if st.session_state.active_page == "Catalogue":
                             other_types = [t for t in fin.types if t != "Crypto / Finance"]
                             c1.caption(f"ℹ️ Also cataloged under: **{', '.join(other_types)}**")
                         c1.write(f"**Designated Heir:** {fin.heir}")
+                        if fin.wish:
+                            c1.write(f"**My Wish:** {fin.wish}")
 
                         with c2:
                             if fin.service_address.startswith("http"):
@@ -891,6 +902,8 @@ if st.session_state.active_page == "Catalogue":
                             other_types = [t for t in cl.types if t != "Cloud Storage"]
                             c1.caption(f"ℹ️ Also cataloged under: **{', '.join(other_types)}**")
                         c1.write(f"**Designated Heir:** {cl.heir}")
+                        if cl.wish:
+                            c1.write(f"**My Wish:** {cl.wish}")
 
                         with c2:
                             if cl.service_address.startswith("http"):
@@ -937,6 +950,8 @@ if st.session_state.active_page == "Catalogue":
                             other_types = [t for t in soc.types if t != "Social Media"]
                             c1.caption(f"ℹ️ Also cataloged under: **{', '.join(other_types)}**")
                         c1.write(f"**Designated Heir:** {soc.heir}")
+                        if soc.wish:
+                            c1.write(f"**My Wish:** {soc.wish}")
 
                         with c2:
                             portal = getattr(soc_info, "profile_url", None) or soc.service_address
@@ -976,6 +991,8 @@ if st.session_state.active_page == "Catalogue":
                         c1.write(f"**Website / Address:** {oth.service_address or 'N/A'}")
                         c1.write(f"**Account Identifier:** {oth.username or 'N/A'}")
                         c1.write(f"**Assigned Heir:** {oth.heir}")
+                        if oth.wish:
+                            c1.write(f"**My Wish:** {oth.wish}")
                         if oth.notes:
                             c1.write(f"**Notes:** {oth.notes}")
                         with c2:
@@ -1096,6 +1113,9 @@ if st.session_state.active_page == "Catalogue":
                 column_config={
                     "Service Address": st.column_config.LinkColumn("Service Address"),
                     "Username": st.column_config.TextColumn("Username"),
+                    "My Wish": st.column_config.TextColumn(
+                        "My Wish", help="Your own short note for after your death, e.g. 'pass to Jordan'", max_chars=120
+                    ),
                     "Cost": st.column_config.TextColumn("Cost / Value"),
                     "Action": st.column_config.SelectboxColumn(
                         "Action",
@@ -1174,6 +1194,9 @@ if st.session_state.active_page == "Catalogue":
                         det_cols = st.columns(min(len(details), 4))
                         for idx, (k, v) in enumerate(details.items()):
                             det_cols[idx % min(len(details), 4)].write(f"**{k}:** {v}")
+
+                    if asset_obj.wish:
+                        st.info(f"🗒️ **Owner's wish:** {asset_obj.wish}")
 
                     st.divider()
 
