@@ -3,6 +3,10 @@
 Results are returned as the webapp's `DeathPolicy` / `CancelPolicy` models
 (`digital_estate_manager.models.schemas`), in the same `(death, cancel)` shape
 as `digital_estate_manager.policies.get_policies_for_service`.
+
+Only the owner's own cancellation while alive ('during_life') is active. The former
+'after_death' mode is commented out: posthumous policies come from the legacy policy
+crawler (`legacy_policy_crawler`, `digital_estate_manager.policies.legacy`).
 """
 
 import json
@@ -36,15 +40,16 @@ client = OpenAI(
 
 APERTUS_MODEL = "swiss-ai/Apertus-v1.5-70B"
 
-Mode = Literal["during_life", "after_death"]
+Mode = Literal["during_life"]  # "after_death" disabled, see module docstring
 
-# Swiss Code of Obligations: contracts of this kind end upon the holder's death
-SWISS_LEGAL_BASIS = "OR Art. 405"
-# Documents always required after death, with the spellings used to detect them in LLM output
-SWISS_AFTER_DEATH_DOCS = {
-    "Todesurkunde (Death Certificate)": ("todesurkunde", "todesschein", "death certificate"),
-    "Erbenschein": ("erbenschein", "erbschein", "erbbescheinigung", "certificate of inheritance"),
-}
+# after_death (disabled):
+# # Swiss Code of Obligations: contracts of this kind end upon the holder's death
+# SWISS_LEGAL_BASIS = "OR Art. 405"
+# # Documents always required after death, with the spellings used to detect them in LLM output
+# SWISS_AFTER_DEATH_DOCS = {
+#     "Todesurkunde (Death Certificate)": ("todesurkunde", "todesschein", "death certificate"),
+#     "Erbenschein": ("erbenschein", "erbschein", "erbbescheinigung", "certificate of inheritance"),
+# }
 
 # RAG `primary_channel` -> schemas.ExecutionMethod
 CHANNEL_TO_EXECUTION_METHOD: Dict[str, ExecutionMethod] = {
@@ -87,15 +92,23 @@ def fetch_web_results_safe(query: str, max_retries: int = 4) -> list:
 def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
     """Runs web search + Apertus and returns the raw policy JSON."""
     _require_api_key()
-    if mode == "after_death":
-        query = f"{provider_name} support contact email cancellation Todesfall Kündigung Schweiz"
-    else:
-        query = f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo Support Contact Email"
+    # after_death (disabled):
+    # if mode == "after_death":
+    #     query = f"{provider_name} support contact email cancellation Todesfall Kündigung Schweiz"
+    query = f"{provider_name} {sub_type} Kündigung Mindestlaufzeit Schweiz Abo Support Contact Email"
 
     search_results = fetch_web_results_safe(query)
     context_str = "\n\n".join(search_results) if search_results else f"Rely on official Swiss and global support facts for {provider_name}."
 
     system_prompt = f"You are a Swiss legal and estate assistant analyzing cancellation policies strictly for '{provider_name}'. Output valid JSON only."
+
+    # after_death (disabled): former prompt rule 2 and the mourning portal fields
+    # 2. If Mode is 'after_death':
+    #    - Under Swiss Law (OR Art. 405), contracts terminate immediately upon death. Set 'notice_period' and 'minimum_contract_duration' to "Immediate (upon notification of death)".
+    #    - List official required documents in 'required_docs' (MUST include "Todesurkunde (Death Certificate)" and "Erbenschein").
+    #    - Step-by-step instructions in 'channel_instructions' MUST reference the exact contact email or portal provided in the JSON fields.
+    # - has_mourning_portal: boolean
+    # - mourning_portal_url: string
 
     user_prompt = f"""
     Context: {context_str}
@@ -107,13 +120,8 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
     1. PROVIDE DIRECT CONTACT INFO:
        - If an email, portal URL, or contact link exists for {provider_name} (e.g. support@anthropic.com, https://support.anthropic.com, support@sbb.ch), YOU MUST INCLUDE IT in 'contact_email' and 'portal_url'.
        - DO NOT leave 'portal_url' or 'contact_email' empty if the official support domain or address is standard for {provider_name}.
-    2. If Mode is 'after_death':
-       - Under Swiss Law (OR Art. 405), contracts terminate immediately upon death. Set 'notice_period' and 'minimum_contract_duration' to "Immediate (upon notification of death)".
-       - List official required documents in 'required_docs' (MUST include "Todesurkunde (Death Certificate)" and "Erbenschein").
-       - Step-by-step instructions in 'channel_instructions' MUST reference the exact contact email or portal provided in the JSON fields.
-    3. If Mode is 'during_life':
-       - Provide standard notice periods and minimum contract terms.
-    4. PLAN VARIATION:
+    2. Provide standard notice periods and minimum contract terms.
+    3. PLAN VARIATION:
        - Decide whether the cancellation rules (minimum contract duration, notice period, cancellation channel) differ between {provider_name}'s plans.
        - If 'Provided Sub-Type' names a specific plan, answer for that plan and set 'requires_sub_type_selection' to false, unless it matches none of {provider_name}'s plans.
        - If 'Provided Sub-Type' is generic (e.g. "subscription") and the rules differ significantly between plans, set 'requires_sub_type_selection' to true, list the plan names in 'sub_type_options', and fill all other fields with the general policy that applies across plans.
@@ -132,8 +140,6 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
     - contact_phone: string
     - mailing_address: string
     - required_docs: list of strings
-    - has_mourning_portal: boolean
-    - mourning_portal_url: string
     """
 
     max_attempts = 5
@@ -193,15 +199,16 @@ def _as_email(value: Any) -> Optional[str]:
     return email if "@" in email and " " not in email else None
 
 
-def _required_documents(raw_docs: Any, mode: Mode) -> List[str]:
+def _required_documents(raw_docs: Any) -> List[str]:
     docs: List[str] = []
     for doc in _as_list(raw_docs):
         if doc.lower() not in (d.lower() for d in docs):
             docs.append(doc)
-    if mode == "after_death":
-        for label, spellings in SWISS_AFTER_DEATH_DOCS.items():
-            if not any(s in doc.lower() for doc in docs for s in spellings):
-                docs.append(label)
+    # after_death (disabled):
+    # if mode == "after_death":
+    #     for label, spellings in SWISS_AFTER_DEATH_DOCS.items():
+    #         if not any(s in doc.lower() for doc in docs for s in spellings):
+    #             docs.append(label)
     return docs
 
 
@@ -214,13 +221,14 @@ def policies_from_rag(
 ) -> Tuple[DeathPolicy, CancelPolicy]:
     """Maps raw RAG policy JSON onto the webapp's DeathPolicy and CancelPolicy.
 
-    In 'during_life' mode the death policy comes from the known-policy knowledge base;
-    in 'after_death' mode it is built from the RAG result under Swiss law (OR Art. 405).
+    The death policy comes from the knowledge base (the legacy policy crawler overlays it in
+    the app); only the CancelPolicy is built from the RAG result.
     """
     portal_url = _as_url(raw.get("portal_url"))
-    mourning_portal_url = _as_url(raw.get("mourning_portal_url")) if raw.get("has_mourning_portal") else None
+    # after_death (disabled):
+    # mourning_portal_url = _as_url(raw.get("mourning_portal_url")) if raw.get("has_mourning_portal") else None
     support_email = _as_email(raw.get("contact_email"))
-    required_documents = _required_documents(raw.get("required_docs"), mode)
+    required_documents = _required_documents(raw.get("required_docs"))
     notice_period = _as_str(raw.get("notice_period"))
     minimum_duration = _as_str(raw.get("minimum_contract_duration"))
 
@@ -240,35 +248,36 @@ def policies_from_rag(
         "mailing_address": _as_str(raw.get("mailing_address")) or None,
         "requires_sub_type_selection": bool(raw.get("requires_sub_type_selection")),
         "sub_type_options": _as_list(raw.get("sub_type_options")),
-        "has_mourning_portal": mourning_portal_url is not None,
-        "mourning_portal_url": mourning_portal_url,
     }
-    if mode == "after_death":
-        action_payload["legal_basis"] = SWISS_LEGAL_BASIS
+    # after_death (disabled):
+    # action_payload["has_mourning_portal"] = mourning_portal_url is not None
+    # action_payload["mourning_portal_url"] = mourning_portal_url
+    # if mode == "after_death":
+    #     action_payload["legal_basis"] = SWISS_LEGAL_BASIS
 
     cancel_policy = CancelPolicy(
         action_type="cancel_subscription",
         action_name=f"Cancel {provider_name} {sub_type}".strip(),
         execution_method=execution_method,
-        target_url=(mourning_portal_url or portal_url) if mode == "after_death" else portal_url,
+        target_url=portal_url,  # after_death (disabled): mourning_portal_url or portal_url
         support_email=support_email,
         required_documents=required_documents,
         steps=_as_list(raw.get("channel_instructions")),
         action_payload=action_payload,
     )
 
-    if mode == "after_death":
-        summary = (
-            f"Under Swiss law ({SWISS_LEGAL_BASIS}) the {provider_name} contract ends upon the "
-            f"account holder's death. Notice period: {notice_period or 'Immediate (upon notification of death)'}."
-        )
-        death_policy = DeathPolicy(
-            summary=summary,
-            required_documents=required_documents,
-            official_portal_url=mourning_portal_url or portal_url,
-        )
-    else:
-        death_policy, _ = get_policies_for_service(provider_name, service_address)
+    # after_death (disabled):
+    # if mode == "after_death":
+    #     summary = (
+    #         f"Under Swiss law ({SWISS_LEGAL_BASIS}) the {provider_name} contract ends upon the "
+    #         f"account holder's death. Notice period: {notice_period or 'Immediate (upon notification of death)'}."
+    #     )
+    #     death_policy = DeathPolicy(
+    #         summary=summary,
+    #         required_documents=required_documents,
+    #         official_portal_url=mourning_portal_url or portal_url,
+    #     )
+    death_policy, _ = get_policies_for_service(provider_name, service_address)
 
     return death_policy, cancel_policy
 
@@ -284,7 +293,7 @@ def search_web_cancellation_policy(
     return policies_from_rag(raw, provider_name, sub_type, mode, service_address)
 
 
-def enrich_asset(asset: Asset, mode: Mode = "after_death", sub_type: str = "subscription") -> Asset:
+def enrich_asset(asset: Asset, mode: Mode = "during_life", sub_type: str = "subscription") -> Asset:
     """Replaces an asset's policies with RAG-researched ones (in place) and returns it."""
     asset.death_policy, asset.cancel_policy = search_web_cancellation_policy(
         asset.service, sub_type=sub_type, mode=mode, service_address=asset.service_address or None
@@ -299,13 +308,13 @@ def generate_cancellation_letter(
     contract_id: str,
     mode: Mode,
     cancel_policy: CancelPolicy,
-    death_policy: Optional[DeathPolicy] = None,
 ) -> str:
     """Writes the German letter body and stores it as `cancel_policy.email_template`."""
     _require_api_key()
     policy_info = {"cancel_policy": cancel_policy.model_dump(exclude={"email_template", "status", "resolution_notes"})}
-    if death_policy is not None and mode == "after_death":
-        policy_info["death_policy"] = death_policy.model_dump()
+    # after_death (disabled), with a `death_policy: Optional[DeathPolicy] = None` parameter:
+    # if death_policy is not None and mode == "after_death":
+    #     policy_info["death_policy"] = death_policy.model_dump()
 
     system_prompt = "You write formal legal cancellation letters under Swiss Law."
 
@@ -322,10 +331,11 @@ def generate_cancellation_letter(
     - DO NOT include sender address, recipient address, or date headers.
     - Start directly with the Subject Line ("Betreff: ...").
     - Include formal greeting ("Sehr geehrte Damen und Herren,").
-    - If Mode is 'after_death', explicitly mention contract termination due to death under Swiss Code of Obligations (OR Art. 405) and reference attached Todesurkunde.
-    - If Mode is 'during_life', state cancellation per notice terms.
+    - State cancellation per notice terms.
     - End with "Mit freundlichen Grüssen,".
     """
+    # after_death (disabled) letter instruction:
+    # - If Mode is 'after_death', explicitly mention contract termination due to death under Swiss Code of Obligations (OR Art. 405) and reference attached Todesurkunde.
 
     for attempt in range(5):
         try:

@@ -1,11 +1,41 @@
+# Design tokens: see docs/design/vz-redesign.md, section 4.1.
 [theme]
-primaryColor = "#3B82F6"
-backgroundColor = "#0F172A"
-secondaryBackgroundColor = "#1E293B"
-textColor = "#F8FAFC"
-font = "sans-serif"
+base = "light"
+primaryColor = "#004388"            # Navy: primary buttons, links, active states
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F5F7"
+textColor = "#191919"               # Ink
+linkColor = "#004388"
+linkUnderline = false
+borderColor = "#E5E5E5"             # Rule
+dataframeBorderColor = "#E5E5E5"
+dataframeHeaderBackgroundColor = "#F5F5F7"
+showWidgetBorder = true
+showSidebarBorder = true
+greenColor = "#4E924A"
+orangeColor = "#B7791F"
+yellowColor = "#B7791F"
+redColor = "#B42318"
+blueColor = "#004388"
+grayColor = "#666666"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap, sans-serif"
+baseFontSize = 15
+baseFontWeight = 400
+headingFontSizes = ["28px", "18px", "15px", "15px", "12px", "12px"]
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+metricValueFontSize = "28px"
+metricValueFontWeight = 700
+baseRadius = "4px"
+buttonRadius = "4px"
+
+[theme.sidebar]
+backgroundColor = "#F5F5F7"
+secondaryBackgroundColor = "#FFFFFF"
 
 [server]
 headless = true
 enableCORS = false
 enableXsrfProtection = false
+
+[client]
+toolbarMode = "minimal"

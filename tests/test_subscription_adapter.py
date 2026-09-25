@@ -62,9 +62,12 @@ def finder_result(*subscriptions, warnings=()):
     return {
         "run": {"tool_version": "0.1.0", "model": None, "warnings": list(warnings)},
         "evidence": [
-            {"evidence_id": "ev-0001", "type": "transaction", "source": "tx.jsonl", "source_ref": "line:1", "observed": {}},
-            {"evidence_id": "ev-0002", "type": "email", "source": "gmail:alex@gmail.com", "source_ref": "m1", "observed": {}},
-            {"evidence_id": "ev-0003", "type": "transaction", "source": "tx.jsonl", "source_ref": "line:9", "observed": {}},
+            {"evidence_id": "ev-0001", "type": "transaction", "source": "tx.jsonl", "source_ref": "line:1",
+             "observed": {"date": "2025-10-05", "amount": 15.99, "currency": "CHF", "description": "NETFLIX.COM"}},
+            {"evidence_id": "ev-0002", "type": "email", "source": "gmail:alex@gmail.com", "source_ref": "m1",
+             "observed": {"date": "2025-11-05", "amount": 15.99, "currency": "chf", "subject": "Your Netflix receipt"}},
+            {"evidence_id": "ev-0003", "type": "transaction", "source": "tx.jsonl", "source_ref": "line:9",
+             "observed": {"date": "2025-12-05", "amount": 15.99, "currency": "CHF", "description": "NETFLIX.COM"}},
         ],
         "subscriptions": list(subscriptions),
     }
@@ -229,3 +232,55 @@ def test_same_service_on_two_accounts_stays_distinct():
     a = subscription_to_asset(finder_subscription(account_email="alex@gmail.com"))
     b = subscription_to_asset(finder_subscription(account_email="jordan@gmail.com"))
     assert a.unique_key != b.unique_key
+
+
+# --- Confidence and evidence (evidence panel) ---------------------------------
+
+
+def test_adapter_fills_confidence_and_evidence():
+    result = to_discovery_result(finder_result(finder_subscription()))
+    asset = result.extracted_assets[0]
+
+    assert asset.confidence == "high"
+    assert asset.confidence_reasons == ["3 charges on a monthly cycle", "confirmed by both bank transactions and billing emails"]
+    assert [e.date for e in asset.evidence] == ["2025-10-05", "2025-11-05", "2025-12-05"]
+    assert [e.kind for e in asset.evidence] == ["transaction", "email", "transaction"]
+    assert asset.evidence[0].description == "NETFLIX.COM"
+    assert asset.evidence[1].description == "Your Netflix receipt"  # emails use the subject
+    assert asset.evidence[1].currency == "CHF"
+    assert asset.notes  # kept for compatibility
+
+
+def test_evidence_ignores_unknown_ids_and_records_without_date():
+    sub = finder_subscription()
+    sub["evidence_ids"] = ["ev-0001", "ev-9999"]
+    result = finder_result(sub)
+    result["evidence"].append({"evidence_id": "ev-0004", "type": "transaction", "observed": {}})
+    sub["evidence_ids"].append("ev-0004")
+
+    asset = to_discovery_result(result).extracted_assets[0]
+    assert [e.date for e in asset.evidence] == ["2025-10-05"]
+
+
+def test_subscription_to_asset_without_evidence_map_still_works():
+    asset = subscription_to_asset(finder_subscription(confidence="medium"))
+    assert asset.evidence == []
+    assert asset.confidence == "high"  # `confidence` is a top-level field, not part of `inferred`
+
+
+@pytest.mark.parametrize(
+    "confidence, status, verified, label",
+    [
+        ("high", "active", False, "Likely"),
+        ("medium", "active", False, "Needs review"),
+        ("low", "active", False, "Needs review"),
+        ("high", "possibly_cancelled", False, "Needs review"),
+        ("low", "active", True, "Confirmed"),
+    ],
+)
+def test_review_labels(confidence, status, verified, label):
+    sub = finder_subscription(status=status)
+    sub["confidence"] = confidence
+    asset = subscription_to_asset(sub)
+    asset.user_verified = verified
+    assert asset.review_label == label

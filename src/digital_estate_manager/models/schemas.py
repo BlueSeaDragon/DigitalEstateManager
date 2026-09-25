@@ -206,6 +206,14 @@ class DeathPolicy(BaseModel):
     official_portal_url: Optional[str] = Field(default=None, description="Direct URL to provider's deceased request portal")
     security_warning: Optional[str] = Field(default=None, description="Security alert (e.g. 2FA restrictions, impersonation fraud)")
 
+    # Set by the AI legacy policy crawler (policies/legacy.py); defaults for hand-written policies.
+    ai_generated: bool = Field(default=False, description="Summary and link come from the AI crawler")
+    policy_found: Optional[bool] = Field(default=None, description="Crawler result: found, not found, or None if not crawled")
+    source_checked: Optional[str] = Field(default=None, description="Date the crawler checked the page")
+    tick_boxes: Dict[str, Optional[bool]] = Field(
+        default_factory=dict, description="Crawler tick boxes: True yes, False no, None not stated"
+    )
+
 
 # =============================================================================
 # 3. Cancel Policy (Flexible Action Execution & Dispatcher)
@@ -365,6 +373,20 @@ class CancelPolicy(BaseModel):
 # 4. Asset Model (Core Aggregate)
 # =============================================================================
 
+class EvidenceItem(BaseModel):
+    """One observation that supports a discovered asset (a bank transaction or a billing email)."""
+    date: str = Field(..., description="ISO date of the charge or email")
+    kind: Literal["transaction", "email"] = Field(default="transaction")
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    description: str = Field(default="", description="Bank description or email subject")
+    source: str = Field(default="", description="File name or mailbox the observation came from")
+
+
+ConfidenceLevel = Literal["low", "medium", "high"]
+ReviewLabel = Literal["Confirmed", "Likely", "Needs review"]
+
+
 AssetStatus = Literal[
     "Active",
     "Pending Review",
@@ -408,12 +430,21 @@ class Asset(BaseModel):
 
     # Lifecycle & Ownership
     heir: str = Field(default="Unassigned", description="Designated heir or executor responsible")
+    wish: str = Field(
+        default="",
+        description="The owner's own short note on what should happen to this account after death (e.g. 'pass to Jordan')",
+    )
     status: AssetStatus = Field(default="Active", description="Execution status")
     notes: Optional[str] = Field(default=None, description="Additional context or account notes")
     user_verified: bool = Field(
         default=True,
         description="Whether the owner has checked this asset themselves (False for automatically discovered assets)",
     )
+
+    # Discovery (filled by the subscription adapter; empty for manually added assets)
+    confidence: Optional[ConfidenceLevel] = Field(default=None, description="Finder confidence level")
+    confidence_reasons: List[str] = Field(default_factory=list, description="Why the finder is (not) sure")
+    evidence: List[EvidenceItem] = Field(default_factory=list, description="Observations behind the finding")
 
     @model_validator(mode="before")
     @classmethod
@@ -583,6 +614,16 @@ class Asset(BaseModel):
         return "N/A"
 
     @property
+    def review_label(self) -> ReviewLabel:
+        """Confirmed = checked by the owner; Likely = high finder confidence;
+        Needs review = medium/low confidence or possibly cancelled."""
+        if self.user_verified:
+            return "Confirmed"
+        if self.confidence == "high" and self.status != "Pending Review":
+            return "Likely"
+        return "Needs review"
+
+    @property
     def action(self) -> str:
         """Current action title from cancel_policy."""
         return self.cancel_policy.action_name
@@ -628,6 +669,7 @@ class Asset(BaseModel):
         category_raw = str(row.get("Type", row.get("Types", "Other"))).strip()
         cost_raw = str(row.get("Cost", "N/A")).strip()
         heir = str(row.get("Heir", "Unassigned")).strip()
+        wish = row.get("My Wish", "")
         action_name = str(row.get("Action", "Cancel")).strip()
         status = row.get("Status", "Active")
         asset_id = str(row.get("id", str(uuid.uuid4())[:8]))
@@ -688,6 +730,7 @@ class Asset(BaseModel):
             cancel_policy=cancel_policy,
             asset_infos=infos,
             heir=heir,
+            wish=wish.strip() if isinstance(wish, str) else "",
             status=status if status in ["Active", "Pending Review", "In Progress", "Completed", "Cancelled", "Archived", "Removed", "Wrongly Attributed"] else "Active",
             notes=str(row.get("Notes", "")) if "Notes" in row else None,
         )
@@ -701,6 +744,7 @@ class Asset(BaseModel):
             "Type": self.category,
             "Cost": self.cost_display,
             "Heir": self.heir,
+            "My Wish": self.wish,
             "Action": self.action,
             "Status": self.status,
         }

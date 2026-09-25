@@ -1,6 +1,7 @@
 """RAG cancellation engine output -> webapp models (no network: the LLM and web search are mocked)."""
 
 import sys
+import typing
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,20 +15,18 @@ from backend import rag_engine  # noqa: E402
 from digital_estate_manager.models import Asset, CancelPolicy, DeathPolicy  # noqa: E402
 from digital_estate_manager.policies import generate_action_email, get_policies_for_service  # noqa: E402
 
-AFTER_DEATH_RAW = {
-    "minimum_contract_duration": "Immediate (upon notification of death)",
-    "notice_period": "Immediate (upon notification of death)",
+EMAIL_RAW = {
+    "minimum_contract_duration": "12 months",
+    "notice_period": "2 months to the end of the month",
     "primary_channel": "email",
     "requires_sub_type_selection": False,
     "sub_type_options": [],
-    "channel_instructions": ["Send the letter to support@swisscom.ch", "Attach the Todesurkunde"],
+    "channel_instructions": ["Write to support@swisscom.ch", "Quote your customer number"],
     "portal_url": "https://www.swisscom.ch/de/privatkunden/hilfe.html",
     "contact_email": "support@swisscom.ch",
     "contact_phone": "0800 800 800",
     "mailing_address": "Swisscom (Schweiz) AG\nPostfach\n3050 Bern",
-    "required_docs": ["Todesurkunde (Death Certificate)"],
-    "has_mourning_portal": True,
-    "mourning_portal_url": "https://www.swisscom.ch/de/todesfall",
+    "required_docs": ["Customer number", "customer number"],
 }
 
 DURING_LIFE_RAW = {
@@ -42,29 +41,32 @@ DURING_LIFE_RAW = {
 }
 
 
-def test_after_death_maps_to_schemas_with_swiss_documents():
-    death, cancel = rag_engine.policies_from_rag(AFTER_DEATH_RAW, "Swisscom", "inOne", "after_death")
+def test_email_channel_maps_to_cancel_policy():
+    death, cancel = rag_engine.policies_from_rag(EMAIL_RAW, "Swisscom", "blue Mobile M")
 
     assert isinstance(death, DeathPolicy) and isinstance(cancel, CancelPolicy)
     assert cancel.execution_method == "email_notice"
     assert cancel.support_email == "support@swisscom.ch"
-    assert cancel.target_url == "https://www.swisscom.ch/de/todesfall"
-    assert cancel.steps == AFTER_DEATH_RAW["channel_instructions"]
-    assert cancel.required_documents == ["Todesurkunde (Death Certificate)", "Erbenschein"]
-    assert cancel.action_payload["legal_basis"] == "OR Art. 405"
-    assert cancel.action_payload["mailing_address"] == AFTER_DEATH_RAW["mailing_address"]
-
-    assert "OR Art. 405" in death.summary
-    assert death.required_documents == cancel.required_documents
-    assert death.official_portal_url == "https://www.swisscom.ch/de/todesfall"
+    assert cancel.target_url == "https://www.swisscom.ch/de/privatkunden/hilfe.html"
+    assert cancel.steps == EMAIL_RAW["channel_instructions"]
+    assert cancel.required_documents == ["Customer number"]
+    assert cancel.action_payload["mode"] == "during_life"
+    assert cancel.action_payload["sub_type"] == "blue Mobile M"
+    assert cancel.action_payload["mailing_address"] == EMAIL_RAW["mailing_address"]
 
 
-def test_after_death_adds_missing_documents_and_keeps_alternate_spellings():
-    raw = {"required_docs": ["Erbschein", "Kopie ID"], "primary_channel": "registered_letter"}
-    _, cancel = rag_engine.policies_from_rag(raw, "SBB", mode="after_death")
+def test_after_death_is_disabled():
+    """Posthumous policies come from the legacy policy crawler, not from this engine."""
+    assert typing.get_args(rag_engine.Mode) == ("during_life",)
+    _, cancel = rag_engine.policies_from_rag(EMAIL_RAW, "Swisscom")
+    assert "legal_basis" not in cancel.action_payload
+    assert "Erbenschein" not in cancel.required_documents
 
-    assert cancel.required_documents == ["Erbschein", "Kopie ID", "Todesurkunde (Death Certificate)"]
+
+def test_registered_letter_maps_to_manual_steps():
+    _, cancel = rag_engine.policies_from_rag({"primary_channel": "registered_letter"}, "Fitnesspark")
     assert cancel.execution_method == "manual_steps"
+    assert cancel.action_payload["primary_channel"] == "registered_letter"
 
 
 def test_during_life_keeps_known_death_policy_and_tolerates_messy_output():
@@ -81,9 +83,8 @@ def test_during_life_keeps_known_death_policy_and_tolerates_messy_output():
     assert cancel.action_payload["policy_url"] == "https://www.spotify.com/legal/end-user-agreement/"
 
 
-@pytest.mark.parametrize("mode", ["during_life", "after_death"])
-def test_empty_rag_output_still_validates(mode):
-    death, cancel = rag_engine.policies_from_rag({"primary_channel": "fax"}, "Unknown Gym", mode=mode)
+def test_empty_rag_output_still_validates():
+    death, cancel = rag_engine.policies_from_rag({"primary_channel": "fax"}, "Unknown Gym")
 
     assert cancel.execution_method == "manual_steps"
     assert cancel.target_url is None
@@ -93,19 +94,19 @@ def test_empty_rag_output_still_validates(mode):
 
 def test_enrich_asset_and_letter_feed_the_webapp_dispatcher(monkeypatch):
     monkeypatch.setattr(rag_engine, "SWISSCOM_API_KEY", "test-key")
-    monkeypatch.setattr(rag_engine, "_query_policy", lambda *args: AFTER_DEATH_RAW)
+    monkeypatch.setattr(rag_engine, "_query_policy", lambda *args: EMAIL_RAW)
     letter = "Betreff: Kündigung {Vertrag 123}\n\nSehr geehrte Damen und Herren,"
     completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=letter))])
     monkeypatch.setattr(rag_engine.client.chat.completions, "create", lambda **kwargs: completion)
 
     death, cancel = get_policies_for_service("Swisscom")
     asset = Asset(service="Swisscom", username="anna@example.ch", death_policy=death, cancel_policy=cancel)
-    rag_engine.enrich_asset(asset, mode="after_death", sub_type="inOne")
-    assert asset.cancel_policy.action_payload["legal_basis"] == "OR Art. 405"
+    rag_engine.enrich_asset(asset, sub_type="blue Mobile M")
+    assert asset.cancel_policy.support_email == "support@swisscom.ch"
     Asset.model_validate(asset.model_dump())
 
     returned = rag_engine.generate_cancellation_letter(
-        "Swisscom", "inOne", "Anna Muster", "123", "after_death", asset.cancel_policy, asset.death_policy
+        "Swisscom", "blue Mobile M", "Anna Muster", "123", "during_life", asset.cancel_policy
     )
     assert returned == letter
     assert letter in generate_action_email(asset)
@@ -127,4 +128,4 @@ def test_api_failure_raises_engine_error(monkeypatch):
 
     monkeypatch.setattr(rag_engine.client.chat.completions, "create", fail)
     with pytest.raises(rag_engine.CancellationEngineError):
-        rag_engine.search_web_cancellation_policy("Swisscom", mode="after_death")
+        rag_engine.search_web_cancellation_policy("Swisscom")

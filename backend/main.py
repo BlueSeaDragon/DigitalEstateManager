@@ -65,8 +65,7 @@ def generate_cancel_docs(data: CancelActionRequest):
             person_name=data.person_name,
             contract_id=data.contract_id,
             mode=data.mode,
-            cancel_policy=cancel_policy,
-            death_policy=death_policy
+            cancel_policy=cancel_policy
         )
     except CancellationEngineError as e:
         raise HTTPException(status_code=504, detail=str(e))

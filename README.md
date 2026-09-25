@@ -21,7 +21,7 @@ AI-powered digital asset discovery and post-mortem executor platform.
    > `pip install -e ./subscription_finder` once. Otherwise discovery shows
    > "The subscription finder is not installed."
 
-3. **Configure Gmail and the AI model** (optional; without them, upload a JSONL transaction file and run rules-only):
+3. **Configure Gmail and the AI model** (optional; without them, scan the demo dataset or a JSONL transaction file with rules only):
    - Put the Google OAuth **Web application** client JSON at `config/credentials_web.json` (gitignored), with
      `http://localhost:8501` as an authorized redirect URI. The CLI keeps using its own desktop client.
      - The file is **not in the repository**. Ask the project owner for it, or create your own in
@@ -36,6 +36,9 @@ AI-powered digital asset discovery and post-mortem executor platform.
    ```bash
    streamlit run app.py
    ```
+   *Overview → Scan my digital footprint* scans `samples/demo_transactions.jsonl` (a fictional Zurich resident).
+   The finder judges "active" against today's date, so regenerate it before a demo:
+   `python samples/make_demo_transactions.py`. The UI design is described in `docs/design/vz-redesign.md`.
 
 ---
 
@@ -50,6 +53,8 @@ DigitalEstateManager/
 │       ├── models/                 # Shared Pydantic data schemas
 │       │   └── schemas.py          # Asset, PolicyGuidance, DiscoveryResult
 │       ├── config.py               # Repo-rooted paths & env (Google web client, redirect URI)
+│       ├── currency.py             # CHF formatting and the fixed demo FX table for totals
+│       ├── ui/                     # Presentation only: styles.py (CSS), format.py, components.py
 │       ├── discovery/              # Teammate 2: AI extraction & statement ingestion
 │       │   ├── email_connector.py  # Gmail OAuth: connect_email_provider / complete_email_connection
 │       │   ├── extractor.py        # parse_and_extract(): runs the subscription finder
@@ -58,7 +63,7 @@ DigitalEstateManager/
 │       │   ├── rules.py            # Platform rules (Spotify, Google, Coinbase, etc.)
 │       │   └── generator.py        # Legal notification & email draft generator
 │       └── vault/                  # Storage & metrics utilities
-│           └── storage.py          # calculate_metrics() & fallback asset loader
+│           └── storage.py          # calculate_metrics() (in CHF) & fallback asset loader
 ├── subscription_finder/            # Standalone package: detects paid subscriptions (Gmail + transactions)
 ├── config/                         # Local OAuth client secrets (gitignored)
 ├── app.py                          # Teammate 1: Streamlit UI
@@ -80,3 +85,60 @@ DigitalEstateManager/
 - **Teammate 3 (Policies & Legal Guidance)**:
   - Works in [src/digital_estate_manager/policies/rules.py](file:///c:/Users/oarevian/OneDrive%20-%20Arev%20Finances/Documents/DEM/DigitalEstateManager/src/digital_estate_manager/policies/rules.py) and [generator.py](file:///c:/Users/oarevian/OneDrive%20-%20Arev%20Finances/Documents/DEM/DigitalEstateManager/src/digital_estate_manager/policies/generator.py).
   - Adds platform-specific requirements, document checklists, and email generation templates.
+
+---
+
+## 🔎 Legacy Policy Crawler (`src/legacy_policy_crawler/`)
+
+For a company website it finds the page that states what happens to an account or subscription after the holder's death, and saves the link, a short summary and a few tick boxes in `data/legacy_policies.json`. It only reads public web pages: it never logs in to accounts and does not cancel anything (that is a separate crawler). The agent runs on Apertus 1.5 70B (Swisscom AI Platform).
+
+**Setup** (after pulling, run `pip install -e .` again: new dependencies `httpx`, `beautifulsoup4`, `ddgs`)
+
+1. Copy `.env.example` to `.env` (git-ignored) and paste your Swisscom token: `SWISSCOM_API_KEY=<token>`. Never commit or share it. The variables are shared with the subscription finder, so both use one Apertus service and one 5 requests/s quota. `SWISSCOM_BASE_URL` may stay empty: the crawler then uses the Swiss AI Weeks endpoint (`.../products/swiss-ai-weeks/apertus-1.5-70b/v1`). A key only works on the product URL it belongs to, so set it if yours differs. `SWISSCOM_MODEL` is optional.
+2. Check token, URL and model: `python -m legacy_policy_crawler.llm --ping`
+
+> Windows on ARM: the x64 Miniconda runs fine under emulation. To avoid Anaconda's channel licence prompt, create the environment with `conda create -n DEM -c conda-forge --override-channels python=3.12 pip`.
+
+**Use**
+
+```bash
+python -m legacy_policy_crawler google.com spotify.com   # JSON on stdout, saved in data/legacy_policies.json
+python -m legacy_policy_crawler netflix.com --trace      # also show the agent's steps (stderr)
+python -m legacy_policy_crawler netflix.com --refresh    # crawl again although the website is saved
+pytest -q                                                # offline tests, no token needed
+```
+
+```python
+from legacy_policy_crawler import lookup_legacy_policy
+
+record = lookup_legacy_policy("https://spotify.com")  # 10-40 s the first time, instant afterwards
+```
+
+**Output** (`data/legacy_policies.json`, one record per website):
+
+```json
+{
+  "website": "acme.com",
+  "legacy_policy_url": "https://help.acme.com/deceased-users",
+  "summary": "Two to three sentences, only what the page states.",
+  "tick_boxes": {
+    "owner_can_appoint_successor": false,
+    "heirs_can_request_access": true,
+    "subscription_or_balance_addressed": null,
+    "proof_required": true
+  },
+  "checked": "2026-09-24"
+}
+```
+
+`true` / `false` means the page says so, `null` means it does not say. A provider without a clear legacy policy is a valid result: `legacy_policy_url` is `"not found"` and `summary` is `"none"`.
+
+Quota: Apertus allows 5 requests/s and 10M input / 2.5M output tokens. The client stays at 4 requests/s and prints the tokens it used (a lookup costs roughly 3-10k input tokens); saved records are reused, so a website costs tokens only once.
+
+Good to know:
+- Summaries are machine-written from the linked page: check the source before relying on them. Only company pages count; community, forum and Q&A pages are never used.
+- A tick box is `true`/`false` only if the model quoted the page for it and the quote is really on the page; otherwise it is `null`.
+- Some sites block bots or disallow the page in `robots.txt` (the crawler respects both). If a promising page cannot be read, the record links to it and the summary comes from the public search result; it says so, and the tick boxes stay `null`.
+- Only HTML pages are read (no PDF or Word files). The web search is keyless and can be throttled; then the agent navigates from the homepage instead.
+
+**In the app** (`policies/legacy.py`): the UI only reads the saved records in `data/legacy_policy_demo.json` (matched by the asset's exact website), so it works offline and without a token. `get_policies_for_service()` applies a record on top of the `DeathPolicy`: summary, link, "checked" date and tick boxes, flagged `ai_generated`; hand-written fields are kept. AI text is always shown with a 🤖 label and a caution note. "Not found" is shown as such, with a "possibly useful link (unverified)". The owner view has a **🕊️ Legacy Policies** tab with a table and a "Look up" button per provider without a result. The button crawls live (10-40 s, needs the token in `.env`) and saves the record into the same file. Set `LEGACY_POLICY_FILE` to use another file.

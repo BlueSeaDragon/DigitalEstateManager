@@ -33,3 +33,9 @@ def google_web_credentials_path() -> Path:
 def google_oauth_redirect_uri() -> str:
     """Must match an authorized redirect URI of the web OAuth client."""
     return os.environ.get("GOOGLE_OAUTH_REDIRECT_URI") or DEFAULT_GOOGLE_OAUTH_REDIRECT_URI
+
+
+def onboarding_enabled() -> bool:
+    """Guided first-run flow (Landing -> Connect -> Analyse -> Review) for the pitch recording.
+    Read from the environment, so it survives the Gmail OAuth redirect into a new session."""
+    return os.environ.get("DLV_ONBOARDING", "").strip().lower() in ("1", "true", "yes", "on")
