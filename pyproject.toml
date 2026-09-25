@@ -18,12 +18,10 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "ddgs>=9.0",
     # Cancellation engine (backend/) used by the cancellation guide
-    "openai>=1.0",
     "fpdf2>=2.7",
     "openai>=1.30",
     "google-api-python-client>=2.100",
     "google-auth-oauthlib>=1.2",
-    "python-dotenv>=1.0",
 
 ]
 
