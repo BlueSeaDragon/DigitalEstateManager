@@ -53,6 +53,8 @@ class Settings:
     cache_dir: Path = field(default_factory=lambda: PROJECT_DIR / ".cache" / "llm")
     max_requests_per_second: float = 4.0
     llm_retries: int = 3
+    llm_max_tokens: int = 4096  # per request; larger jobs are split into batches
+    interpret_batch_size: int = 15  # candidates per review call (~250 answer tokens each)
     email_body_chars: int = 1500
     snippet_chars: int = 200
     gmail_months: int = 24
@@ -75,6 +77,11 @@ class Settings:
     merge_amount_tolerance: float = 0.05
     merge_date_days: int = 3
     refund_window_days: int = 10
+    # digital footprint
+    gmail_footprint_max_messages: int = 1500
+    footprint_max_evidence_per_account: int = 10
+    footprint_llm_batch_size: int = 40
+    footprint_keep_unknown_weak: bool = False  # newsletters from senders not in the catalog
 
     @classmethod
     def from_env(cls) -> "Settings":

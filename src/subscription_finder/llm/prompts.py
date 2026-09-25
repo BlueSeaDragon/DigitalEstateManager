@@ -50,3 +50,24 @@ Rules:
 
 def interpret_user(candidates: list[dict[str, Any]]) -> str:
     return "Candidates:\n" + json.dumps(candidates, ensure_ascii=False, indent=None)
+
+
+FOOTPRINT_SYSTEM = """You help heirs find the online accounts of ONE person who has died. Each input item is a
+service that sent this person emails; rules could not tell what kind of service it is. For each item decide
+the account type from the facts given. Reply with ONLY a JSON object:
+{"services": [{"id": string, "account_type": one of ACCOUNT_TYPES or "not_a_service",
+  "name": string|null, "reason": string}]}
+Rules:
+- One entry per input item, same "id".
+- account_type "not_a_service" if the sender looks like a private person, an employer, a school or other
+  correspondence rather than a service where the person has an account, contract or customer relationship.
+- name: the service's brand name as it appears in the sender names, domain or subjects, else null. Never invent it.
+- reason: one short factual sentence (e.g. "subjects mention a policy number and premium").
+- Use only the facts given. If unsure, choose "other"."""
+
+
+def footprint_user(services: list[dict[str, Any]], account_types: list[str]) -> str:
+    return (
+        f"ACCOUNT_TYPES = {json.dumps(account_types)}\n"
+        f"Services:\n{json.dumps(services, ensure_ascii=False, indent=None)}"
+    )
