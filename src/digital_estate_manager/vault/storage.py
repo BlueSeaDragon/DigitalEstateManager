@@ -12,6 +12,7 @@ from digital_estate_manager.models.schemas import (
     CloudStorageAssetInfo,
     DeathPolicy,
     FinancialAssetInfo,
+    GenericAssetInfo,
     SocialMediaAssetInfo,
     SubscriptionAssetInfo,
 )
@@ -74,111 +75,156 @@ def apply_saved_wishes(assets: List[Asset]) -> List[Asset]:
     return assets
 
 
-def get_default_assets() -> List[Asset]:
-    """Returns baseline starter assets for new sessions or demo mode."""
-    spot_death, spot_cancel = get_policies_for_service("Spotify", "https://spotify.com")
-    spot_death2, spot_cancel2 = get_policies_for_service("Spotify", "https://spotify.com")
-    g_death, g_cancel = get_policies_for_service("Google Drive", "https://drive.google.com")
-    cb_death, cb_cancel = get_policies_for_service("Coinbase", "https://coinbase.com")
+# Demo persona: Martina Keller, Zurich (docs/design/demo-persona.md). The starter inventory holds the
+# accounts she entered herself, paid with her Mastercard, PayPal, Amex or by invoice. The demo scan
+# (samples/demo_transactions.jsonl) reads her PostFinance Visa and finds the subscriptions she forgot.
+PERSONA_NAME = "Martina Keller"
 
+
+def _account(service: str, address: str, username: str, infos: list, **fields: Any) -> Asset:
+    """One starter account, with the provider's policies looked up."""
+    death, cancel = get_policies_for_service(service, address)
+    return Asset(service=service, service_address=address, username=username,
+                 death_policy=death, cancel_policy=cancel, asset_infos=infos, **fields)
+
+
+def get_default_assets() -> List[Asset]:
+    """The demo persona's starter inventory, with any wishes saved in data/wishes.json on top."""
     assets = [
-        Asset(
-            service="Spotify",
-            service_address="https://spotify.com",
-            username="alex.personal@gmail.com",
-            death_policy=spot_death,
-            cancel_policy=spot_cancel,
-            asset_info=SubscriptionAssetInfo(
-                currency="CHF",
-                cost_monthly=10.99,
-                plan_tier="Premium Individual",
-                billing_cycle="monthly",
-                renewal_date="2026-10-01",
-                payment_method_hint="Visa ending 4242",
-            ),
-            heir="Alex",
-            wish="Cancel/Deactivate",
-            status="Active",
-            notes="Personal Spotify Premium account",
-        ),
-        Asset(
-            service="Spotify",
-            service_address="https://spotify.com",
-            username="family.plan@gmail.com",
-            death_policy=spot_death2,
-            cancel_policy=spot_cancel2,
-            asset_info=SubscriptionAssetInfo(
-                currency="CHF",
-                cost_monthly=16.99,
-                plan_tier="Premium Family",
-                billing_cycle="monthly",
-                renewal_date="2026-10-15",
-                payment_method_hint="Mastercard ending 9811",
-            ),
-            heir="Jordan",
-            status="Active",
-            notes="Shared Spotify Family plan",
-        ),
-        Asset(
-            service="Google Drive",
-            service_address="https://drive.google.com",
-            username="jordan.backup@gmail.com",
-            death_policy=g_death,
-            cancel_policy=g_cancel,
-            asset_infos=[
+        _account(
+            "Google Drive", "https://drive.google.com", "martina.keller@gmail.com",
+            [
                 CloudStorageAssetInfo(
-                    storage_capacity_gb=100.0,
-                    used_storage_gb=42.3,
+                    storage_capacity_gb=2000.0,
+                    used_storage_gb=612.4,
                     contains_sensitive_data=True,
-                    data_types=["Tax Documents", "Family Photos", "Legal Contracts"],
+                    data_types=["Family Photos", "Tax Returns 2009-2025", "Architecture Portfolio", "Gmail Archive"],
                 ),
                 SubscriptionAssetInfo(
                     currency="CHF",
-                    cost_monthly=1.99,
-                    plan_tier="Google One 100 GB Plan",
+                    cost_monthly=10.00,
+                    plan_tier="Google One Premium 2 TB",
                     billing_cycle="monthly",
-                    renewal_date="2026-10-12",
-                    payment_method_hint="Google Pay (Mastercard ending 9811)",
+                    renewal_date="2026-10-08",
+                    payment_method_hint="Mastercard ending 3309",
                 ),
             ],
-            heir="Jordan",
+            heir="Lea Keller",
             wish="Pass to heir",
-            status="Active",
-            notes="100GB Google One storage plan & active recurring subscription",
+            notes="Main Google account: Gmail since 2006, Drive and Photos. Inactive Account Manager names Lea.",
         ),
-        Asset(
-            service="Coinbase",
-            service_address="https://coinbase.com",
-            username="alex.crypto@gmail.com",
-            death_policy=cb_death,
-            cancel_policy=cb_cancel,
-            asset_infos=[
+        _account(
+            "iCloud", "https://apple.com", "martina.keller@icloud.com",
+            [
+                CloudStorageAssetInfo(
+                    storage_capacity_gb=200.0,
+                    used_storage_gb=148.7,
+                    contains_sensitive_data=True,
+                    data_types=["iPhone Photos", "Notes", "Health Data", "Device Backups"],
+                ),
+                SubscriptionAssetInfo(
+                    currency="CHF",
+                    cost_monthly=3.00,
+                    plan_tier="iCloud+ 200 GB",
+                    billing_cycle="monthly",
+                    renewal_date="2026-10-15",
+                    payment_method_hint="Mastercard ending 3309",
+                ),
+            ],
+            wish="Other: give the photo library to Thomas, then delete the account",
+            notes="Apple ID of her iPhone and iPad. No Legacy Contact set up yet.",
+        ),
+        _account(
+            "Spotify", "https://spotify.com", "martina.keller@gmail.com",
+            [
+                SubscriptionAssetInfo(
+                    currency="CHF",
+                    cost_monthly=17.95,
+                    plan_tier="Premium Duo",
+                    billing_cycle="monthly",
+                    renewal_date="2026-10-03",
+                    payment_method_hint="PayPal (martina.keller@gmail.com)",
+                ),
+            ],
+            wish="Other: move the Duo plan to Thomas so he keeps our shared playlists",
+            notes="Duo plan shared with Thomas.",
+        ),
+        _account(
+            "Coinbase", "https://coinbase.com", "martina.keller@gmail.com",
+            [
                 FinancialAssetInfo(
                     currency="CHF",
                     institution_type="crypto_exchange",
-                    approximate_balance=12450.00,
+                    approximate_balance=18340.00,
                     is_custodial=True,
                     requires_probate=True,
-                    account_number_hint="Vault-ETH/BTC",
-                ),
-                SubscriptionAssetInfo(
-                    currency="CHF",
-                    cost_monthly=29.99,
-                    plan_tier="Coinbase One (Zero-Fee Trading)",
-                    billing_cycle="monthly",
-                    renewal_date="2026-10-20",
-                    payment_method_hint="Visa ending 4242",
+                    account_number_hint="BTC 0.21, ETH 2.4",
                 ),
             ],
-            heir="Alex",
+            heir="Jonas Keller",
             wish="Pass to heir",
-            status="Active",
-            notes="Crypto exchange wallet with active Coinbase One membership",
+            notes="Bought in 2021. 2FA with the authenticator app on her iPhone.",
+        ),
+        _account(
+            "PostFinance e-finance", "https://postfinance.ch", "e-finance ID 7731-0482",
+            [
+                FinancialAssetInfo(
+                    currency="CHF",
+                    institution_type="bank",
+                    approximate_balance=42800.00,
+                    is_custodial=True,
+                    requires_probate=True,
+                    account_number_hint="CH93 0900 0000 **** 4821",
+                ),
+            ],
+            heir="Thomas Keller",
+            wish="Pass to heir",
+            notes="Private and savings account. Salary and the Visa card run over this account.",
+        ),
+        _account(
+            "UBS key4 custody account", "https://ubs.com", "Contract 0235-****-01",
+            [
+                FinancialAssetInfo(
+                    currency="CHF",
+                    institution_type="brokerage",
+                    approximate_balance=96500.00,
+                    is_custodial=True,
+                    requires_probate=True,
+                    account_number_hint="Depot 0235-****-01",
+                ),
+            ],
+            heir="Lea and Jonas Keller",
+            wish="Pass to heir",
+            notes="ETF savings plan, CHF 500 per month. Split equally between the children, as in the will.",
+        ),
+        _account(
+            "Facebook", "https://facebook.com", "m.keller@bluewin.ch",
+            [
+                SocialMediaAssetInfo(
+                    profile_url="https://facebook.com/martina.keller.zh",
+                    memorialization_supported=True,
+                    has_legacy_contact_set=True,
+                ),
+            ],
+            wish="Memorialize",
+            notes="Legacy contact: Lea Keller. Logs in with the old Bluewin address.",
+        ),
+        _account(
+            "Instagram", "https://instagram.com", "@martina.baut",
+            [
+                SocialMediaAssetInfo(
+                    profile_url="https://instagram.com/martina.baut",
+                    memorialization_supported=True,
+                    has_legacy_contact_set=False,
+                ),
+            ],
+            wish="Cancel/Deactivate",
+            notes="Architecture sketches and site visits, about 1'200 followers.",
         ),
         Asset(
             service="LinkedIn",
             service_address="https://linkedin.com",
-            username="alex.professional@linkedin.com",
+            username="martina.keller@gmail.com",
             death_policy=with_legacy_record(
                 DeathPolicy(
                     summary="LinkedIn allows accounts to be memorialized or closed upon submission of executor verification and death certificate.",
@@ -201,24 +247,86 @@ def get_default_assets() -> List[Asset]:
             ),
             asset_infos=[
                 SocialMediaAssetInfo(
-                    profile_url="https://linkedin.com/in/alex-legacy",
-                    platform_handle="alex-legacy",
+                    profile_url="https://linkedin.com/in/martina-keller-architektin",
                     memorialization_supported=True,
                     has_legacy_contact_set=False,
                 ),
                 SubscriptionAssetInfo(
-                    currency="CHF",
+                    currency="USD",
                     cost_monthly=39.99,
-                    plan_tier="Premium Career",
+                    plan_tier="Premium Business",
                     billing_cycle="monthly",
-                    renewal_date="2026-11-01",
-                    payment_method_hint="American Express ending 1002",
+                    renewal_date="2026-10-21",
+                    payment_method_hint="American Express ending 1006",
                 ),
             ],
-            heir="Jordan",
-            wish="Cancel/Deactivate",
-            status="Active",
-            notes="Professional profile and active Premium Career subscription",
+            wish="Memorialize",
+            notes="Professional profile; founder of Keller Architektur GmbH.",
+        ),
+        _account(
+            "1Password", "https://1password.com", "martina.keller@gmail.com",
+            [
+                GenericAssetInfo(
+                    category_name="Password Manager",
+                    custom_properties={"Emergency Kit": "Printed, in the home safe (envelope 'Digital')"},
+                ),
+                SubscriptionAssetInfo(
+                    currency="USD",
+                    cost_monthly=4.99,
+                    plan_tier="Families",
+                    billing_cycle="annual",
+                    renewal_date="2027-02-11",
+                    payment_method_hint="American Express ending 1006",
+                ),
+            ],
+            heir="Thomas Keller",
+            wish="Pass to heir",
+            notes="Holds the logins of every other account. Thomas is a member of the family vault.",
+        ),
+        _account(
+            "Hostpoint (keller-architektur.ch)", "https://hostpoint.ch", "Customer no. 418-2207",
+            [
+                GenericAssetInfo(
+                    category_name="Domain & Website",
+                    custom_properties={"Domain": "keller-architektur.ch", "Mailboxes": 3},
+                ),
+                SubscriptionAssetInfo(
+                    currency="CHF",
+                    cost_monthly=14.90,
+                    plan_tier="Business hosting + domain",
+                    billing_cycle="annual",
+                    renewal_date="2027-01-31",
+                    payment_method_hint="Invoice (PostFinance)",
+                ),
+            ],
+            wish="Other: keep the website online for 12 months, then let the domain lapse",
+            notes="Website and email of the architecture practice.",
+        ),
+        _account(
+            "Dropbox", "https://dropbox.com", "m.keller@bluewin.ch",
+            [
+                CloudStorageAssetInfo(
+                    storage_capacity_gb=2.0,
+                    used_storage_gb=1.6,
+                    contains_sensitive_data=False,
+                    data_types=["Old Project Plans"],
+                ),
+                SubscriptionAssetInfo(
+                    currency="CHF",
+                    cost_monthly=11.99,
+                    plan_tier="Plus (cancelled, now Basic)",
+                    billing_cycle="monthly",
+                    auto_renew=False,
+                    payment_method_hint="Mastercard ending 3309",
+                ),
+            ],
+            status="Cancelled",
+            notes="Plus plan cancelled in March 2026. The free Basic account with old plans remains.",
+        ),
+        _account(
+            "Galaxus", "https://galaxus.ch", "martina.keller@gmail.com",
+            [GenericAssetInfo(category_name="Online Shop", custom_properties={"Saved card": "Mastercard ending 3309"})],
+            notes="Shopping account with a saved card and order history. No wish set yet.",
         ),
     ]
     return apply_saved_wishes(assets)

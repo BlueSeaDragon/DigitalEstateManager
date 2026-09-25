@@ -34,7 +34,7 @@ Status: design approved, 2026-09-24. Branch: `feat/vz-redesign`.
 
 1. Radius is 4px, a compromise between VZ's 0–5px and softer SaaS radii.
 2. Icons use Streamlit's built-in Material icons; no new dependency.
-3. Demo data is the fictional Zurich resident in `samples/demo_transactions.jsonl`.
+3. Demo data is the fictional persona Martina Keller (`docs/design/demo-persona.md`): her starter inventory and her statement in `samples/demo_transactions.jsonl`.
 4. "Share" in the journey strip can be a basic export (download); real sharing is out of scope.
 5. Single user and session-only state, as today. The Gmail privacy wording stays. The recording uses
    the sample data or a test inbox.

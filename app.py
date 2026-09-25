@@ -318,7 +318,7 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         ui.section_label("Social media")
         soc_c1, soc_c2 = st.columns(2, vertical_alignment="top")
         with soc_c1:
-            handle_val = st.text_input("Handle", placeholder="@alex", key="modal_soc_handle")
+            handle_val = st.text_input("Handle", placeholder="@martina.baut", key="modal_soc_handle")
         with soc_c2:
             profile_url_val = st.text_input("Profile URL", placeholder="https://", key="modal_soc_url")
         soc_mem_val = st.checkbox("Platform supports memorialization", value=True, key="modal_soc_mem")
@@ -338,7 +338,7 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
     )
     heir_input = ""
     if wish_input == "Pass to heir":
-        heir_input = st.text_input("Responsible heir (optional)", placeholder="e.g. Alex", key="modal_heir")
+        heir_input = st.text_input("Responsible heir (optional)", placeholder="e.g. Lea Keller", key="modal_heir")
     wish_detail = ""
     if wish_input == "Other":
         wish_detail = st.text_input("Your wish, in a few words", max_chars=60, key="modal_wish_text",
@@ -880,7 +880,7 @@ def wish_picker(asset: Asset, key: str) -> None:
         st.rerun()
     if choice == "Pass to heir":
         heir = st.text_input("Responsible heir (optional)", value=asset.heir if has_heir(asset) else "",
-                             placeholder="e.g. Alex", key=f"heir_{key}")
+                             placeholder="e.g. Lea Keller", key=f"heir_{key}")
         asset.heir = heir.strip() or "Unassigned"
 
 
@@ -1432,7 +1432,7 @@ if page == "Assets" and role == "Owner":
             (str(len(needs_review)), "need your review", bool(needs_review)),
         ])
     else:
-        st.caption("The scan uses a demo dataset of a fictional Zurich resident.")
+        st.caption("The scan uses the demo statement of Martina Keller, a fictional Zurich architect.")
 
     filters = ["All", "To review", "Subscriptions", "Finance", "Cloud", "Social", "Other"]
     with st.container(horizontal=True, vertical_alignment="center"):
@@ -1581,7 +1581,7 @@ else:
     demo_col, gmail_col = st.columns(2, gap="medium")
     with demo_col, st.container(border=True, height="stretch"):
         st.subheader("Demo dataset", anchor=False)
-        st.caption("18 months of card and bank transactions of a fictional Zurich resident.")
+        st.caption("18 months of account and card transactions of Martina Keller, a fictional Zurich architect.")
         demo_clicked = st.button("Scan demo dataset", type="primary", key="scan_demo")
 
     with gmail_col, st.container(border=True, height="stretch"):

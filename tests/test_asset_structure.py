@@ -94,16 +94,18 @@ def test_asset_creation_and_table_serialization():
 
 def test_default_assets_and_metrics():
     assets = get_default_assets()
-    assert len(assets) == 5
+    assert len(assets) == 13
     metrics = calculate_metrics(assets)
-    assert metrics["total_services"] == 5
-    assert metrics["unique_providers"] == 4
+    assert metrics["total_services"] == 13
+    assert metrics["unique_providers"] == 13
+    assert metrics["cancelled_count"] == 1  # Dropbox
+    assert metrics["critical_recovery_count"] == 3  # Coinbase, PostFinance, UBS
     assert metrics["monthly_drain_prevented_chf"] > 0
 
 
 def test_owner_cancellation_and_type_specific_dict():
     assets = get_default_assets()
-    sub = assets[0]
+    sub = next(a for a in assets if a.service == "Spotify")
     
     # Test owner cancellation plan
     plan = sub.cancel_policy.get_owner_cancellation_plan(
@@ -133,7 +135,7 @@ def test_owner_removal_and_wrongly_attributed_audit():
     initial_total = initial_metrics["total_services"]
 
     # 1. Owner removes an account
-    target = assets[0]
+    target = next(a for a in assets if a.service == "Spotify")
     sub_cost = target.cost_monthly
     target.status = "Removed"
 
@@ -150,12 +152,12 @@ def test_owner_removal_and_wrongly_attributed_audit():
     assert metrics_after_restore["active_monthly_spend_chf"] == initial_spend
 
     # 3. Heir/Executor flags an account as Wrongly Attributed (never deleted)
-    fin_asset = assets[2]
+    fin_asset = next(a for a in assets if a.service == "Coinbase")
     fin_asset.status = "Wrongly Attributed"
     metrics_after_wrong = calculate_metrics(assets)
     assert metrics_after_wrong["wrongly_attributed_count"] == 1
     # Remains in total estate records
-    assert len(assets) == 5
+    assert len(assets) == 13
 
     # 4. Table serialization preserves these statuses
     row_removed = target.to_table_row()

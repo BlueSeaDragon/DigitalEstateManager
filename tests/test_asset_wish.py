@@ -77,5 +77,5 @@ def test_other_wish_text_is_saved_and_reloaded():
 
 
 def test_old_cancel_and_deactivate_wishes_become_one_option(wish_file):
-    wish_file.write_text('{"coinbase.com|alex.crypto@gmail.com": "Delete account"}', encoding="utf-8")
+    wish_file.write_text('{"coinbase.com|martina.keller@gmail.com": "Delete account"}', encoding="utf-8")
     assert coinbase().wish == "Cancel/Deactivate"

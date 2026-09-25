@@ -36,7 +36,8 @@ AI-powered digital asset discovery and post-mortem executor platform.
    ```bash
    streamlit run app.py
    ```
-   *Overview → Scan my digital footprint* scans `samples/demo_transactions.jsonl` (a fictional Zurich resident).
+   The demo data belongs to one fictional person, Martina Keller from Zurich (`docs/design/demo-persona.md`).
+   *Overview → Scan my digital footprint* scans her statement, `samples/demo_transactions.jsonl`.
    The finder judges "active" against today's date, so regenerate it before a demo:
    `python samples/make_demo_transactions.py`. The UI design is described in `docs/design/vz-redesign.md`.
 

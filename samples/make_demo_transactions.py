@@ -1,5 +1,9 @@
-"""Generates `demo_transactions.jsonl`: 18 months of card and bank transactions for a
-fictional Zurich resident, used to demo discovery without a real inbox or bank account.
+"""Generates `demo_transactions.jsonl`: 18 months of PostFinance account and Visa transactions of
+Martina Keller, the fictional Zurich architect of the demo (docs/design/demo-persona.md), used to
+demo discovery without a real inbox or bank account.
+
+Her starter inventory (vault/storage.py) holds the accounts she pays by Mastercard, PayPal or
+invoice; this statement holds the ones she forgot, so the scan adds new rows instead of duplicates.
 
 The finder judges "active" vs "possibly cancelled" against today's date, so regenerate
 shortly before a demo or recording:
@@ -14,7 +18,7 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-CLIENT_ID = "DEMO-ZH-001"
+CLIENT_ID = "DEMO-ZH-KELLER"
 MONTHS = 18
 OUT = Path(__file__).with_name("demo_transactions.jsonl")
 
@@ -22,10 +26,7 @@ OUT = Path(__file__).with_name("demo_transactions.jsonl")
 # Month offsets count back from the end month: 0 = end month, 17 = first month of history.
 MONTHLY = [
     ("NETFLIX.COM Amsterdam", "4899", 7, 20.90, "CHF", 17, None),
-    ("SPOTIFY P2F3A8C Stockholm Premium Family", "5815", 12, 25.95, "CHF", 17, None),
     ("SWISSCOM (SCHWEIZ) AG Mobile Abo", "4814", 28, 65.00, "CHF", 17, None),
-    ("GOOGLE *Google One Storage", "5818", 3, 2.50, "CHF", 17, None),
-    ("APPLE.COM/BILL iCloud+ 200GB", "5818", 15, 3.00, "CHF", 17, None),
     ("OPENAI *CHATGPT SUBSCR San Francisco", "5734", 19, 20.00, "USD", 11, None),
     ("ADOBE *CREATIVE CLOUD PHOTO Dublin", "5734", 22, 13.50, "CHF", 17, 6),  # cancelled ~6 months ago
     ("UPDATE FITNESS AG Mitgliedschaft", "7997", 1, 79.00, "CHF", 17, None),
@@ -79,7 +80,7 @@ def _noise_amount(rng: random.Random, mu: float, sigma: float) -> float:
             return value
 
 
-def generate(end: date, seed: int = 11) -> list[dict]:
+def generate(end: date, seed: int = 38) -> list[dict]:
     rng = random.Random(seed)
     rows: list[dict] = []
 
@@ -102,7 +103,7 @@ def generate(end: date, seed: int = 11) -> list[dict]:
     # Everyday spending the finder must ignore.
     for offset in range(MONTHS - 1, -1, -1):
         start = _month_start(end, offset)
-        rows.append(_row(start + timedelta(days=24), 7850.00, "Lohn ACME Treuhand AG", None,
+        rows.append(_row(start + timedelta(days=24), 7850.00, "Lohn Keller Architektur GmbH", None,
                          kind="transfer", direction="in", rng=rng))
         # The finder chains card charges by amount and timing (not by merchant), so noise
         # amounts are spread widely to keep coincidental "series" out of the demo.

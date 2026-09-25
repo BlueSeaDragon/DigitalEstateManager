@@ -432,7 +432,7 @@ class Asset(BaseModel):
     heir: str = Field(default="Unassigned", description="Designated heir or executor responsible")
     wish: str = Field(
         default="",
-        description="The owner's own short note on what should happen to this account after death (e.g. 'pass to Jordan')",
+        description="The owner's own short note on what should happen to this account after death (e.g. 'pass to Lea')",
     )
     status: AssetStatus = Field(default="Active", description="Execution status")
     notes: Optional[str] = Field(default=None, description="Additional context or account notes")
