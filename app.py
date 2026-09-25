@@ -197,7 +197,7 @@ def render_policy_summary(death_pol: DeathPolicy) -> None:
     if death_pol.ai_generated:
         checked = f" Checked {death_pol.source_checked}." if death_pol.source_checked else ""
         if is_stale(death_pol.source_checked):
-            checked += " This result is old; the owner can refresh it under Assets, Legacy policies."
+            checked += " This result is old; the owner can refresh it in the account's details."
         st.caption(AI_NOTICE + checked)
         if death_pol.policy_found:
             ui.definition_list(policy_answers(death_pol))
@@ -801,6 +801,14 @@ if _switch:
 # =============================================================================
 ROW = [3.2, 1.6, 1.4, 1.3, 0.8]
 EXECUTOR_ROW = [3.2, 1.6, 1.3, 0.8]
+POLICY_ROW = [2.6, 1.1, 1.1, 1.1, 1.1, 1.2, 0.7]
+# Column heads for the crawler's answers; the full wording is in each row's details.
+POLICY_COLUMNS = {
+    "Owner can name a successor": "Successor",
+    "Heirs can request access": "Heir access",
+    "Subscription or balance covered": "Balance covered",
+    "Proof required": "Proof needed",
+}
 
 
 def has_heir(asset: Asset) -> bool:
@@ -883,6 +891,9 @@ def owner_details(asset: Asset, key: str) -> None:
     if asset.notes and not asset.evidence and asset.user_verified:
         facts["Notes"] = asset.notes
     ui.definition_list(facts)
+    # Right above the wish: what the provider allows is what the wish has to work with.
+    policy_block(asset, key, "What the provider does after death",
+                 note=AI_NOTICE if asset.death_policy.ai_generated else None)
     wish_picker(asset, key)
 
     detected = not asset.user_verified and asset.status != "Removed"
@@ -1022,19 +1033,37 @@ def executor_rows(assets: List[Asset], prefix: str) -> None:
                     executor_details(asset, row_key)
 
 
-def policy_row(asset: Asset) -> Dict[str, object]:
-    """One row of the owner's legacy-policy table."""
+def lookup_label(pol: DeathPolicy) -> Optional[str]:
+    """The look-up button's text, or None while the crawler's result is current."""
+    if not pol.ai_generated:
+        return "Look up with AI"
+    if is_stale(pol.source_checked):
+        return f"Refresh (checked {days_since_checked(pol.source_checked)} days ago)"
+    if pol.policy_found is False:
+        return "Try again"
+    return None
+
+
+def policy_block(asset: Asset, key: str, title: str, note: Optional[str] = None) -> None:
+    """The provider's policy after death, with its source link and the look-up button right below."""
     pol = asset.death_policy
+    tone = "muted" if not pol.ai_generated else ("green" if pol.policy_found else "amber")
+    meta = None
+    if pol.source_checked:
+        meta = f"Checked {pol.source_checked}" + (", old" if is_stale(pol.source_checked) else "")
+    answers = policy_answers(pol) if pol.ai_generated and pol.policy_found else {}
     link = pol.official_portal_url or asset.cancel_policy.target_url or asset.service_address
-    row: Dict[str, object] = {
-        "Service": asset.service,
-        "Source": policy_source(pol),
-        "Summary": pol.summary,
-        "Link": link if link and link.startswith("http") else None,
-    }
-    row.update(policy_answers(pol))
-    row["Checked"] = (pol.source_checked or "") + (" (old)" if is_stale(pol.source_checked) else "")
-    return row
+    host, label = provider_key(asset.service_address), lookup_label(pol)
+    with st.container(key=f"polblock_{key}"):
+        ui.policy_panel(title, (policy_source(pol), tone), pol.summary, answers, meta, note)
+        with st.container(horizontal=True, vertical_alignment="center"):
+            if link and link.startswith("http"):
+                st.link_button(policy_link_label(pol), link, type="tertiary", icon=":material/open_in_new:")
+            if host and label and st.button(label, type="tertiary", icon=":material/travel_explore:",
+                                            key=f"{key}_lookup",
+                                            help="Searches the provider's website, 10 to 40 seconds. "
+                                                 "Needs the Apertus token in .env."):
+                look_up_policy(asset, host)
 
 
 def look_up_policy(asset: Asset, host: str) -> None:
@@ -1056,33 +1085,30 @@ def legacy_policy_view(assets: List[Asset]) -> None:
     if not assets:
         ui.muted("No accounts here.")
         return
-    st.dataframe(
-        pd.DataFrame([policy_row(a) for a in assets]),
-        width="stretch",
-        hide_index=True,
-        column_config={"Link": st.column_config.LinkColumn("Link")},
-    )
-
-    # One lookup per website with no result, no policy found, or an old result
-    to_look_up: Dict[str, Asset] = {}
-    for a in assets:
-        host, pol = provider_key(a.service_address), a.death_policy
-        if host and (not pol.ai_generated or pol.policy_found is False or is_stale(pol.source_checked)):
-            to_look_up.setdefault(host, a)
-    if not to_look_up:
-        return
-    ui.section_label("Look up or refresh")
-    st.caption("Searches the provider's website, 10 to 40 seconds each. Needs the Apertus token in `.env`.")
-    for host, a in to_look_up.items():
-        pol = a.death_policy
-        if not pol.ai_generated:
-            verb = "Look up"
-        elif is_stale(pol.source_checked):
-            verb = f"Refresh (checked {days_since_checked(pol.source_checked)} days ago)"
-        else:
-            verb = "Try again"
-        if st.button(f"{verb}: {a.service} ({host})", key=f"lookup_policy_{host}"):
-            look_up_policy(a, host)
+    list_header(["Service", *POLICY_COLUMNS.values(), "Checked", ""], POLICY_ROW)
+    for asset in assets:
+        pol = asset.death_policy
+        row_key = f"pol_{asset.id}"
+        with st.container(key=f"row_{row_key}"):
+            is_open = row_key in st.session_state.open_rows
+            with st.container(key=f"rowhead_{row_key}"):
+                cols = st.columns(POLICY_ROW, vertical_alignment="center")
+                with cols[0]:
+                    ui.cell(display_name(asset), policy_source(pol), strong=True)
+                answers = policy_answers(pol) if pol.ai_generated and pol.policy_found else {}
+                for col, label in zip(cols[1:5], POLICY_COLUMNS):
+                    answer = answers.get(label, "–")
+                    col.markdown(ui.status_label(answer, ui.ANSWER_TONES.get(answer, "muted")),
+                                 unsafe_allow_html=True)
+                with cols[5]:
+                    ui.cell(pol.source_checked or "Not checked",
+                            "Refresh due" if is_stale(pol.source_checked) else None)
+                with cols[6]:
+                    st.button("Hide" if is_open else "Details", type="tertiary", key=f"toggle_{row_key}",
+                              on_click=toggle_row, args=(row_key,))
+            if is_open:
+                with st.container(key=f"details_{row_key}"):
+                    policy_block(asset, row_key, "What the provider does after death")
 
 
 def inventory_csv(assets: List[Asset]) -> str:
