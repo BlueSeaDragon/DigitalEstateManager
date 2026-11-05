@@ -1062,7 +1062,7 @@ def policy_block(asset: Asset, key: str, title: str, note: Optional[str] = None)
             if host and label and st.button(label, type="tertiary", icon=":material/travel_explore:",
                                             key=f"{key}_lookup",
                                             help="Searches the provider's website, 10 to 40 seconds. "
-                                                 "Needs the Apertus token in .env."):
+                                                 "Needs Claude Code logged in (see README)."):
                 look_up_policy(asset, host)
 
 

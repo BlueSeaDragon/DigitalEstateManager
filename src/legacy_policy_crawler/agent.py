@@ -1,7 +1,7 @@
-"""The agent: finds a company's legacy-policy page with Apertus and returns a JSON record.
+"""The agent: finds a company's legacy-policy page with Claude and returns a JSON record.
 
 1. Collect candidate pages: web search, the homepage and common help-center addresses.
-2. Loop: Apertus picks the next numbered candidate (open / search / finish).
+2. Loop: Claude picks the next numbered candidate (open / search / finish).
 3. One extraction call on the chosen page gives the summary and tick boxes.
 4. The record is saved in data/legacy_policies.json.
 
@@ -317,7 +317,7 @@ class Run:
         ]
 
     def _read(self, page: Page) -> dict | None:
-        """One Apertus call on a page's text. The model's answer, or None if it was not JSON."""
+        """One Claude call on a page's text. The model's answer, or None if it was not JSON."""
         self.trace(f"  extract from {page.url}")
         user = f"Website: {self.host}\nPage URL: {page.url}\n<page>\n{page.text[:PAGE_CHARS]}\n</page>"
         try:
@@ -388,7 +388,7 @@ def _invalid(why: str) -> dict:
 
 
 def _decide(run: Run, step: int, last: int | None) -> dict:
-    """One Apertus call -> a validated action, or {"action": "invalid", "why": reason}."""
+    """One Claude call -> a validated action, or {"action": "invalid", "why": reason}."""
     try:
         act = chat_json(run.messages(step, last), max_tokens=150)
     except JSONError:
@@ -485,7 +485,7 @@ def lookup_legacy_policy(
 
     A record has: website, legacy_policy_url, summary, tick_boxes, checked. A provider without a
     clear policy gets "not found" and "none". Found and not-found records are saved in the JSON
-    file. Failures (site unreachable, Apertus unavailable) and a "not found" reached without a
+    file. Failures (site unreachable, Claude unavailable) and a "not found" reached without a
     working web search are returned but not saved, so a re-run retries.
     A missing or rejected token raises llm.AuthError.
     """
@@ -512,7 +512,7 @@ def lookup_legacy_policy(
         raise
     except LLMError as e:
         return make_record(
-            host, NOT_FOUND, f"Apertus was unavailable ({e}); try again later."
+            host, NOT_FOUND, f"Claude was unavailable ({e}); try again later."
         )
     if record is None:
         reasons = [

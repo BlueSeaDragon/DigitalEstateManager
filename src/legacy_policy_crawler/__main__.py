@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     print(json.dumps(records, indent=2, ensure_ascii=False))
     if USAGE["calls"]:
-        print(f"Apertus tokens used: {USAGE}", file=sys.stderr)
+        print(f"Claude tokens used: {USAGE}", file=sys.stderr)
     return 0
 
 

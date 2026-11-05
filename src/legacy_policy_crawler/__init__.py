@@ -1,4 +1,4 @@
-"""Legacy account/subscription policy crawler (Apertus 1.5 70B).
+"""Legacy account/subscription policy crawler (Claude via the Claude Code CLI).
 
     from legacy_policy_crawler import lookup_legacy_policy
     record = lookup_legacy_policy("www.google.com")

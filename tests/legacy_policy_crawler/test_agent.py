@@ -525,9 +525,9 @@ def test_missing_token_stops_the_run(world):
 
 
 def test_temporary_model_outage_is_returned_but_not_saved(world):
-    world.nav = [LLMError("Apertus unavailable: HTTP 503")]
+    world.nav = [LLMError("Claude failed: API Error: 529 Overloaded")]
     record = agent.lookup_legacy_policy("acme.com", path=world.path)
-    assert "Apertus was unavailable" in record["summary"]
+    assert "Claude was unavailable" in record["summary"]
     assert record["legacy_policy_url"] == "not found"
     assert not world.path.exists()
 

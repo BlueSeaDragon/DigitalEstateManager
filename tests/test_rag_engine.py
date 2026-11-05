@@ -3,11 +3,8 @@
 import sys
 import typing
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-
-pytest.importorskip("openai")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -99,15 +96,23 @@ def test_during_life_has_no_after_death_rules():
     assert "Erbenschein" not in cancel.required_documents
 
 
+@pytest.fixture(autouse=True)
+def saved_policies(monkeypatch, tmp_path):
+    """Saved answers go to a temporary file, never to the real data/ folder."""
+    path = tmp_path / "cancel_policies_saved.json"
+    monkeypatch.setattr(rag_engine, "SAVED_POLICIES_FILE", path)
+    monkeypatch.setattr(rag_engine, "SAVED_LETTERS_FILE", tmp_path / "cancel_letters_saved.json")
+    return path
+
+
 def test_after_death_letter_is_written_by_the_executor_for_the_deceased(monkeypatch):
-    monkeypatch.setattr(rag_engine, "SWISSCOM_API_KEY", "test-key")
     prompts = []
 
-    def create(**kwargs):
-        prompts.append(kwargs["messages"][1]["content"])
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Betreff: Kündigung"))])
+    def ask(prompt, system, timeout=None):
+        prompts.append(prompt)
+        return "Betreff: Kündigung"
 
-    monkeypatch.setattr(rag_engine.client.chat.completions, "create", create)
+    monkeypatch.setattr(rag_engine.claude_cli, "ask", ask)
     _, cancel = rag_engine.policies_from_rag(AFTER_DEATH_RAW, "Swisscom", mode="after_death")
     rag_engine.generate_cancellation_letter(
         "Swisscom", "inOne", "Anna Muster", "123", "after_death", cancel, deceased_name="Hans Muster"
@@ -188,11 +193,9 @@ def test_empty_rag_output_still_validates():
 
 
 def test_enrich_asset_and_letter_feed_the_webapp_dispatcher(monkeypatch):
-    monkeypatch.setattr(rag_engine, "SWISSCOM_API_KEY", "test-key")
     monkeypatch.setattr(rag_engine, "_query_policy", lambda *args: EMAIL_RAW)
     letter = "Betreff: Kündigung {Vertrag 123}\n\nSehr geehrte Damen und Herren,"
-    completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=letter))])
-    monkeypatch.setattr(rag_engine.client.chat.completions, "create", lambda **kwargs: completion)
+    monkeypatch.setattr(rag_engine.claude_cli, "ask", lambda prompt, system, timeout=None: letter)
 
     death, cancel = get_policies_for_service("Swisscom")
     asset = Asset(service="Swisscom", username="anna@example.ch", death_policy=death, cancel_policy=cancel)
@@ -207,20 +210,123 @@ def test_enrich_asset_and_letter_feed_the_webapp_dispatcher(monkeypatch):
     assert letter in generate_action_email(asset)
 
 
-def test_missing_api_key_raises_engine_error(monkeypatch):
-    monkeypatch.setattr(rag_engine, "SWISSCOM_API_KEY", "")
-    with pytest.raises(rag_engine.CancellationEngineError, match="SWISSCOM_API_KEY"):
+def _fail(error):
+    def ask_json(prompt, system, timeout=None):
+        raise error
+
+    return ask_json
+
+
+def test_logged_out_claude_raises_engine_error(monkeypatch):
+    monkeypatch.setattr(rag_engine, "fetch_web_results_safe", lambda query: SOURCES)
+    monkeypatch.setattr(rag_engine.claude_cli, "ask_json", _fail(rag_engine.claude_cli.ClaudeCLIUnavailable("not logged in")))
+    with pytest.raises(rag_engine.CancellationEngineError, match="not logged in"):
         rag_engine.search_web_cancellation_policy("Swisscom")
 
 
-def test_api_failure_raises_engine_error(monkeypatch):
-    monkeypatch.setattr(rag_engine, "SWISSCOM_API_KEY", "test-key")
+def test_claude_is_tried_once_with_a_short_timeout_then_raises_engine_error(monkeypatch):
     monkeypatch.setattr(rag_engine, "fetch_web_results_safe", lambda query: [])
-    monkeypatch.setattr(rag_engine.time, "sleep", lambda seconds: None)
+    calls = []
 
-    def fail(**kwargs):
-        raise ConnectionError("offline")
+    def ask_json(prompt, system, timeout):
+        calls.append(timeout)
+        raise rag_engine.claude_cli.ClaudeCLIError("offline")
 
-    monkeypatch.setattr(rag_engine.client.chat.completions, "create", fail)
-    with pytest.raises(rag_engine.CancellationEngineError):
+    monkeypatch.setattr(rag_engine.claude_cli, "ask_json", ask_json)
+    with pytest.raises(rag_engine.CancellationEngineError, match="offline"):
         rag_engine.search_web_cancellation_policy("Swisscom")
+    assert calls == [rag_engine.CLAUDE_TIMEOUT] and rag_engine.CLAUDE_TIMEOUT <= 60
+
+
+def test_letter_falls_back_to_the_template_when_claude_fails(monkeypatch):
+    def fail(prompt, system, timeout):
+        raise rag_engine.claude_cli.ClaudeCLIError("Claude did not answer within 45 s.")
+
+    monkeypatch.setattr(rag_engine.claude_cli, "ask", fail)
+    _, cancel = rag_engine.policies_from_rag(AFTER_DEATH_RAW, "Swisscom", mode="after_death")
+    letter = rag_engine.generate_cancellation_letter(
+        "Swisscom", "inOne", "Anna Muster", "123", "after_death", cancel, deceased_name="Hans Muster"
+    )
+    assert letter.startswith("Betreff: Kündigung Swisscom «inOne», Vertragsnummer 123")
+    assert "Sehr geehrte Damen und Herren," in letter
+    assert "Hans Muster verstorben" in letter and "OR Art. 405" in letter and "Todesurkunde" in letter
+    assert letter.endswith("Mit freundlichen Grüssen,\nAnna Muster")
+    assert cancel.email_template == letter
+
+    during = rag_engine.generate_cancellation_letter(
+        "Spotify", "subscription", "Martina Keller", "-", "during_life", cancel
+    )
+    assert during.startswith("Betreff: Kündigung Spotify\n")
+    assert "Vertragsnummer" not in during and "verstorben" not in during
+
+
+def test_researched_policy_is_saved_and_used_when_a_later_lookup_fails(monkeypatch, saved_policies):
+    monkeypatch.setattr(rag_engine, "fetch_web_results_safe", lambda query: SOURCES)
+    monkeypatch.setattr(rag_engine.claude_cli, "ask_json", lambda prompt, system, timeout=None: dict(EMAIL_RAW))
+    first = rag_engine._query_policy("Google One", "subscription", "during_life")
+    assert first["_sources"] == SOURCES
+    assert saved_policies.exists()
+
+    monkeypatch.setattr(rag_engine.claude_cli, "ask_json", _fail(rag_engine.claude_cli.ClaudeCLIError("offline")))
+    assert rag_engine._query_policy("Google One", "subscription", "during_life") == first
+
+    # no search results: the saved answer is used without asking Claude
+    monkeypatch.setattr(rag_engine, "fetch_web_results_safe", lambda query: [])
+    monkeypatch.setattr(rag_engine.claude_cli, "ask_json", _fail(AssertionError("Claude was asked")))
+    assert rag_engine._query_policy("Google One", "subscription", "during_life") == first
+
+
+def test_answers_without_search_results_are_not_saved(monkeypatch, saved_policies):
+    monkeypatch.setattr(rag_engine, "fetch_web_results_safe", lambda query: [])
+    monkeypatch.setattr(rag_engine.claude_cli, "ask_json", lambda prompt, system, timeout=None: dict(EMAIL_RAW))
+    rag_engine._query_policy("Swisscom", "subscription", "during_life")
+    assert not saved_policies.exists()
+
+
+CLAUDE_LETTER = (
+    "Betreff: Kündigung Swisscom inOne, Vertragsnummer 123\n\n"
+    "Sehr geehrte Damen und Herren,\n\n"
+    "im Namen der Erben von Hans Muster kündige ich den Vertrag 123 gemäss OR Art. 405.\n\n"
+    "Mit freundlichen Grüssen,\nAnna Muster"
+)
+
+
+def _write_letter(sender="Anna Muster", contract="123", deceased="Hans Muster"):
+    _, cancel = rag_engine.policies_from_rag(AFTER_DEATH_RAW, "Swisscom", mode="after_death")
+    return rag_engine.generate_cancellation_letter(
+        "Swisscom", "inOne", sender, contract, "after_death", cancel, deceased_name=deceased
+    )
+
+
+def _claude_fails(monkeypatch):
+    def fail(prompt, system, timeout=None):
+        raise rag_engine.claude_cli.ClaudeCLIError("offline")
+
+    monkeypatch.setattr(rag_engine.claude_cli, "ask", fail)
+
+
+def test_claude_letter_is_saved_without_personal_details_and_refilled_later(monkeypatch):
+    monkeypatch.setattr(rag_engine.claude_cli, "ask", lambda prompt, system, timeout=None: CLAUDE_LETTER)
+    assert _write_letter() == CLAUDE_LETTER
+    saved = rag_engine.SAVED_LETTERS_FILE.read_text(encoding="utf-8")
+    assert "Muster" not in saved and "123" not in saved
+    assert "[[SENDER]]" in saved and "[[DECEASED]]" in saved and "[[CONTRACT]]" in saved
+
+    _claude_fails(monkeypatch)
+    letter = _write_letter("Eva Beispiel", "987", "Martina Keller")
+    assert letter == (
+        "Betreff: Kündigung Swisscom inOne, Vertragsnummer 987\n\n"
+        "Sehr geehrte Damen und Herren,\n\n"
+        "im Namen der Erben von Martina Keller kündige ich den Vertrag 987 gemäss OR Art. 405.\n\n"
+        "Mit freundlichen Grüssen,\nEva Beispiel"
+    )
+
+    # the saved letter needs a contract number: without one the template is used
+    assert "Vertragsnummer" not in _write_letter("Eva Beispiel", "-", "Martina Keller")
+
+
+def test_letter_with_a_leftover_name_part_is_not_saved(monkeypatch):
+    letter = CLAUDE_LETTER.replace("Hans Muster", "Herrn Muster")
+    monkeypatch.setattr(rag_engine.claude_cli, "ask", lambda prompt, system, timeout=None: letter)
+    _write_letter()
+    assert not rag_engine.SAVED_LETTERS_FILE.exists()

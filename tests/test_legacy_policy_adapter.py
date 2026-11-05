@@ -167,10 +167,10 @@ def test_refresh_reports_success_or_a_friendly_problem(policy_file, monkeypatch)
     )
     assert "could not be reached" in legacy.refresh_legacy_policy("https://newsite.com")
 
-    def no_token(*args, **kwargs):
-        raise AuthError("SWISSCOM_API_KEY is empty")
+    def logged_out(*args, **kwargs):
+        raise AuthError("Claude is not logged in")
 
-    monkeypatch.setattr(legacy_policy_crawler, "lookup_legacy_policy", no_token)
-    assert "SWISSCOM_API_KEY is empty" in legacy.refresh_legacy_policy(
-        "https://coinbase.com"
-    )
+    monkeypatch.setattr(legacy_policy_crawler, "lookup_legacy_policy", logged_out)
+    assert "not logged in" in legacy.refresh_legacy_policy("https://newsite.com")
+    # a saved record is kept and shown without a warning
+    assert legacy.refresh_legacy_policy("https://coinbase.com") is None

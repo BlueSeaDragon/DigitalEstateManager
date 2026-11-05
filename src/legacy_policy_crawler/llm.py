@@ -1,103 +1,49 @@
-"""Apertus client: plain HTTP calls to an OpenAI-compatible endpoint (Swisscom, Swiss AI Weeks).
+"""Claude client for the crawler, through the local Claude Code CLI (no API key).
 
-Uses the same Swisscom variables as the subscription finder, set in the git-ignored .env file:
-SWISSCOM_API_KEY (required), SWISSCOM_BASE_URL and SWISSCOM_MODEL (optional; defaults below).
+Runs `claude -p` via `digital_estate_manager.claude_cli`, signed in with the CLI's own login.
+Optional environment variable: CLAUDE_MODEL (default "sonnet").
 Check everything with:  python -m legacy_policy_crawler.llm --ping
 """
 
 from __future__ import annotations
 
 import json
-import os
 import sys
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
-from dotenv import load_dotenv
+from digital_estate_manager import claude_cli
 
 ROOT = Path(__file__).resolve().parents[2]  # the repo root
 USAGE_LOG = ROOT / ".cache" / "legacy_policy_crawler" / "usage.jsonl"
 
-# A key only works on its own product URL: on .../products/swiss-ai-platform/... the same key
-# gets HTTP 401 NO_PRODUCT_FOUND_FOR_KEY.
-DEFAULT_BASE_URL = "https://api.swisscom.com/products/swiss-ai-weeks/apertus-1.5-70b/v1"
-DEFAULT_MODEL = "swiss-ai/Apertus-v1.5-70B"
-MIN_INTERVAL = 0.25  # seconds between calls: the quota is 5 requests/s, this stays at 4
-MAX_TRIES = 4
-
 USAGE = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}  # used by this process
-
-for _env_file in (ROOT / ".env", Path.cwd() / ".env"):
-    if _env_file.is_file():
-        load_dotenv(_env_file)
-        break
 
 
 class LLMError(RuntimeError):
-    """Apertus could not be reached or answered badly. Usually transient."""
+    """Claude could not be reached or answered badly. Usually transient."""
 
 
 class AuthError(LLMError):
-    """Missing or rejected token, or a wrong URL or model: fix the configuration."""
+    """The `claude` CLI is missing or not logged in: fix the setup."""
 
 
 class JSONError(LLMError):
     """The reply contained no valid JSON object."""
 
 
-_client = httpx.Client(timeout=httpx.Timeout(60.0, connect=15.0))
-_throttle_lock = threading.Lock()
 _usage_lock = threading.Lock()
-_last_call = 0.0
-
-
-def _settings() -> tuple[str, str, str]:
-    key = os.getenv("SWISSCOM_API_KEY", "").strip()
-    if not key:
-        raise AuthError(
-            "SWISSCOM_API_KEY is empty. Paste your token into the .env file (see .env.example)."
-        )
-    base_url = (os.getenv("SWISSCOM_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
-    return base_url, os.getenv("SWISSCOM_MODEL") or DEFAULT_MODEL, key
-
-
-def _rejected(response: httpx.Response) -> str:
-    """Message for a 401/403, with the gateway's error code (e.g. NO_PRODUCT_FOUND_FOR_KEY)."""
-    try:
-        code = str(response.json().get("code") or "")
-    except (ValueError, AttributeError):
-        code = ""
-    detail = f": {code}" if code else ""
-    return (
-        f"Apertus rejected the key (HTTP {response.status_code}{detail}). "
-        "Check SWISSCOM_API_KEY in .env and that SWISSCOM_BASE_URL is the product URL the key belongs to."
-    )
-
-
-def _throttle() -> None:
-    """Keep MIN_INTERVAL seconds between calls, across threads."""
-    global _last_call
-    with _throttle_lock:
-        wait = _last_call + MIN_INTERVAL - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        _last_call = time.monotonic()
-
-
-def _retry_after(response: httpx.Response) -> float:
-    try:
-        return min(float(response.headers.get("Retry-After", 0)), 30.0)
-    except ValueError:
-        return 0.0
 
 
 def _count(usage: dict) -> None:
     """Count the tokens of one reply and append them to the usage log."""
-    prompt = int(usage.get("prompt_tokens") or 0)
-    completion = int(usage.get("completion_tokens") or 0)
+    prompt = sum(
+        int(usage.get(key) or 0)
+        for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+    )
+    completion = int(usage.get("output_tokens") or 0)
     with _usage_lock:
         USAGE["calls"] += 1
         USAGE["prompt_tokens"] += prompt
@@ -115,55 +61,27 @@ def _count(usage: dict) -> None:
             pass  # the log is only a convenience
 
 
+def _as_prompt(messages: list[dict]) -> tuple[str, str]:
+    """Chat messages -> (system prompt, one user prompt). Earlier turns are quoted in the prompt."""
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    turns = [m for m in messages if m["role"] != "system"]
+    if len(turns) == 1:
+        return system, turns[0]["content"]
+    lines = [f"<{m['role']}>\n{m['content']}\n</{m['role']}>" for m in turns[:-1]]
+    return system, "Conversation so far:\n" + "\n".join(lines) + "\n\n" + turns[-1]["content"]
+
+
 def chat(messages: list[dict], max_tokens: int = 300, temperature: float = 0.0) -> str:
-    """One chat completion: the reply text. Retries 429, 5xx and network errors."""
-    base_url, model, key = _settings()
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "top_p": 0.9,
-        "max_tokens": max_tokens,
-    }
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "User-Agent": "DigitalEstateManager/0.1",
-    }
-    delay = 1.0
-    for attempt in range(1, MAX_TRIES + 1):
-        _throttle()
-        try:
-            response = _client.post(
-                f"{base_url}/chat/completions", json=payload, headers=headers
-            )
-        except httpx.TransportError as e:
-            problem = f"network error ({type(e).__name__})"
-        else:
-            status = response.status_code
-            if status in (401, 403):
-                raise AuthError(_rejected(response))
-            if status == 404:
-                raise AuthError(
-                    "Apertus endpoint or model not found (HTTP 404). Check SWISSCOM_BASE_URL / SWISSCOM_MODEL."
-                )
-            if status == 429 or status >= 500:
-                problem = f"HTTP {status}"
-                delay = max(delay, _retry_after(response))
-            elif status >= 400:
-                raise LLMError(f"Apertus error HTTP {status}: {response.text[:200]}")
-            else:
-                try:
-                    data = response.json()
-                    text = data["choices"][0]["message"]["content"] or ""
-                except (ValueError, KeyError, IndexError, TypeError) as e:
-                    raise LLMError("Unexpected reply format from Apertus") from e
-                _count(data.get("usage") or {})
-                return text
-        if attempt == MAX_TRIES:
-            raise LLMError(f"Apertus unavailable: {problem}")
-        time.sleep(delay)
-        delay *= 2
-    raise LLMError("Apertus unavailable")  # not reached
+    """One reply from Claude. `max_tokens` and `temperature` are kept for callers; the CLI ignores them."""
+    system, prompt = _as_prompt(messages)
+    try:
+        text, usage = claude_cli.ask_with_usage(prompt, system or "You are a helpful assistant.")
+    except claude_cli.ClaudeCLIUnavailable as e:
+        raise AuthError(str(e)) from e
+    except claude_cli.ClaudeCLIError as e:
+        raise LLMError(str(e)) from e
+    _count(usage)
+    return text
 
 
 def extract_json(text: str) -> dict | None:
@@ -194,7 +112,7 @@ def chat_json(messages: list[dict], max_tokens: int = 300) -> dict:
         ]
         obj = extract_json(chat(retry, max_tokens))
     if obj is None:
-        raise JSONError("Apertus did not return valid JSON")
+        raise JSONError("Claude did not return valid JSON")
     return obj
 
 
@@ -205,15 +123,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     started = time.monotonic()
     try:
-        reply = chat(
-            [{"role": "user", "content": "Reply with the single word: pong"}],
-            max_tokens=10,
-        )
+        reply = chat([{"role": "user", "content": "Reply with the single word: pong"}])
     except LLMError as e:
         print(f"ping failed: {e}", file=sys.stderr)
         return 1
     print(
-        f"Apertus replied {reply.strip()!r} in {time.monotonic() - started:.1f}s; tokens used: {USAGE}"
+        f"Claude replied {reply.strip()!r} in {time.monotonic() - started:.1f}s; tokens used: {USAGE}"
     )
     return 0
 

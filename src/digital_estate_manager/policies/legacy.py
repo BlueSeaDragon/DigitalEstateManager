@@ -145,5 +145,6 @@ def refresh_legacy_policy(service_address: str) -> Optional[str]:
             service_address, refresh=True, path=str(LEGACY_POLICY_FILE)
         )
     except AuthError as error:
-        return f"Cannot look up policies right now: {error}"
+        # Claude is not set up: keep showing the saved record without a warning
+        return None if legacy_record(service_address) else f"Cannot look up policies right now: {error}"
     return None if legacy_record(service_address) else record["summary"]

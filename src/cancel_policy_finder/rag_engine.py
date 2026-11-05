@@ -1,4 +1,4 @@
-"""RAG cancellation engine: web search + Swisscom-hosted Apertus.
+"""RAG cancellation engine: web search + Claude (through the local Claude Code CLI).
 
 Results are returned as the webapp's `DeathPolicy` / `CancelPolicy` models
 (`digital_estate_manager.models.schemas`), in the same `(death, cancel)` shape
@@ -8,10 +8,13 @@ Two modes: 'during_life' (the owner cancels) and 'after_death' (an executor canc
 deceased person's contract under Swiss law). In the app both feed only the cancellation
 guide; the DeathPolicy shown to executors comes from the legacy policy crawler
 (`legacy_policy_crawler`, `digital_estate_manager.policies.legacy`).
+
+Every researched policy is saved to data/cancel_policies_saved.json (public provider terms only,
+no personal data). When the search finds nothing or Claude is unavailable, the saved answer is used.
+Letters are saved to data/cancel_letters_saved.json with placeholders instead of names.
 """
 
 import json
-import os
 import random
 import re
 import sys
@@ -20,28 +23,23 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from urllib.parse import urlsplit
 
-from openai import OpenAI
-
 # Allow running the backend from a checkout without `pip install -e .`
 _SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if _SRC_DIR.is_dir() and str(_SRC_DIR) not in sys.path:
     sys.path.append(str(_SRC_DIR))
 
-from digital_estate_manager import config as _config  # noqa: E402,F401  (loads the repository .env)
+from digital_estate_manager import claude_cli  # noqa: E402
+from digital_estate_manager import config as _config  # noqa: E402  (also loads the repository .env)
 from digital_estate_manager.models.schemas import Asset, CancelPolicy, DeathPolicy, ExecutionMethod  # noqa: E402
 from digital_estate_manager.policies.rules import get_policies_for_service  # noqa: E402
 
-SWISSCOM_BASE_URL = os.getenv("SWISSCOM_BASE_URL") or "https://api.swisscom.com/products/swiss-ai-weeks/apertus-1.5-70b/v1"
-SWISSCOM_API_KEY = os.getenv("SWISSCOM_API_KEY", "")
-
-# The SDK rejects an empty key at construction; _require_api_key() reports it on use instead
-client = OpenAI(
-    base_url=SWISSCOM_BASE_URL,
-    api_key=SWISSCOM_API_KEY or "unset",
-    timeout=20.0
-)
-
-APERTUS_MODEL = "swiss-ai/Apertus-v1.5-70B"
+# Researched policies, reused when a live lookup fails (data/ is gitignored)
+SAVED_POLICIES_FILE = _config.REPO_ROOT / "data" / "cancel_policies_saved.json"
+# Letters Claude wrote, with placeholders instead of names and contract number
+SAVED_LETTERS_FILE = _config.REPO_ROOT / "data" / "cancel_letters_saved.json"
+SENDER, DECEASED, CONTRACT = "[[SENDER]]", "[[DECEASED]]", "[[CONTRACT]]"
+# Seconds to wait for Claude before falling back (saved policy, template letter); answers take 10-30 s
+CLAUDE_TIMEOUT = 45.0
 
 Mode = Literal["during_life", "after_death"]
 
@@ -64,12 +62,79 @@ CHANNEL_TO_EXECUTION_METHOD: Dict[str, ExecutionMethod] = {
 
 
 class CancellationEngineError(RuntimeError):
-    """Raised when the Apertus API cannot produce a policy or letter after retries."""
+    """Raised when Claude cannot produce a policy or letter and no saved answer exists."""
 
 
-def _require_api_key() -> None:
-    if not SWISSCOM_API_KEY:
-        raise CancellationEngineError("SWISSCOM_API_KEY is not set (see .env.example).")
+def _saved_key(provider_name: str, sub_type: str, mode: Mode) -> str:
+    return f"{provider_name.strip().lower()}|{sub_type.strip().lower()}|{mode}"
+
+
+def _load_saved(path: Path) -> Dict[str, Any]:
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return saved if isinstance(saved, dict) else {}
+
+
+def _store(path: Path, key: str, value: Any) -> None:
+    saved = _load_saved(path)
+    saved[key] = value
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(saved, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError:
+        pass  # saving is only a fallback for later lookups
+
+
+def _saved_policy(provider_name: str, sub_type: str, mode: Mode) -> Optional[dict]:
+    return _load_saved(SAVED_POLICIES_FILE).get(_saved_key(provider_name, sub_type, mode))
+
+
+def _save_policy(provider_name: str, sub_type: str, mode: Mode, data: dict) -> None:
+    _store(SAVED_POLICIES_FILE, _saved_key(provider_name, sub_type, mode), data)
+
+
+def _letter_fields(person_name: str, contract_id: str, deceased_name: Optional[str]) -> Dict[str, str]:
+    """Placeholder -> value for the personal details in a letter (empty values are left out)."""
+    contract = contract_id.strip()
+    fields = {
+        SENDER: person_name.strip(),
+        DECEASED: (deceased_name or "").strip(),
+        CONTRACT: "" if contract == "-" else contract,
+    }
+    return {placeholder: value for placeholder, value in fields.items() if value}
+
+
+def _save_letter(provider_name: str, sub_type: str, mode: Mode, letter: str, fields: Dict[str, str]) -> None:
+    """Saves the letter with placeholders in place of the names and contract number.
+
+    Not saved if any part of a name (3+ letters) is still in the letter, e.g. "Frau Keller":
+    the saved file must hold no personal data.
+    """
+    blank = letter
+    for placeholder, value in sorted(fields.items(), key=lambda item: -len(item[1])):
+        blank = re.sub(rf"\b{re.escape(value)}\b", lambda match: placeholder, blank)
+    for placeholder in (SENDER, DECEASED):
+        for part in fields.get(placeholder, "").split():
+            if len(part) >= 3 and re.search(rf"\b{re.escape(part)}\b", blank, flags=re.IGNORECASE):
+                return
+    if CONTRACT in fields and fields[CONTRACT] in blank:
+        return
+    _store(SAVED_LETTERS_FILE, _saved_key(provider_name, sub_type, mode), blank)
+
+
+def _saved_letter(provider_name: str, sub_type: str, mode: Mode, fields: Dict[str, str]) -> Optional[str]:
+    """The saved letter filled in with the current details, or None if there is none or a detail is missing."""
+    blank = _load_saved(SAVED_LETTERS_FILE).get(_saved_key(provider_name, sub_type, mode))
+    if not isinstance(blank, str):
+        return None
+    for placeholder in (SENDER, DECEASED, CONTRACT):
+        if placeholder in blank:
+            if placeholder not in fields:
+                return None
+            blank = blank.replace(placeholder, fields[placeholder])
+    return blank
 
 
 def fetch_web_results_safe(query: str, max_retries: int = 4) -> list:
@@ -92,8 +157,7 @@ def fetch_web_results_safe(query: str, max_retries: int = 4) -> list:
 
 
 def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
-    """Runs web search + Apertus and returns the raw policy JSON."""
-    _require_api_key()
+    """Runs web search + Claude and returns the raw policy JSON (or the saved one if that fails)."""
     if mode == "after_death":
         queries = [
             f"{provider_name} support contact email cancellation Todesfall Kündigung Schweiz",
@@ -109,6 +173,9 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
         for result in fetch_web_results_safe(query):
             if result not in search_results:
                 search_results.append(result)
+    saved = _saved_policy(provider_name, sub_type, mode)
+    if not search_results and saved is not None:
+        return saved
     context_str = "\n\n".join(search_results) if search_results else "No search results were found."
 
     system_prompt = f"You are a Swiss legal and estate assistant analyzing cancellation policies strictly for '{provider_name}'. Output valid JSON only."
@@ -156,36 +223,17 @@ def _query_policy(provider_name: str, sub_type: str, mode: Mode) -> dict:
     - mourning_portal_url: string
     """
 
-    max_attempts = 5
-    for attempt in range(max_attempts):
-        try:
-            response = client.chat.completions.create(
-                model=APERTUS_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.0,
-                response_format={"type": "json_object"}
-            )
-            data = json.loads(response.choices[0].message.content)
-
-            payload_str = json.dumps(data).lower()
-            if "nonstopgym" in payload_str and "nonstop" not in provider_name.lower():
-                time.sleep(1.0)
-                continue
-
-            data["_sources"] = search_results  # lets policies_from_rag() drop links not found in the search
-            return data
-
-        except Exception as e:
-            if attempt == max_attempts - 1:
-                raise CancellationEngineError(f"Swisscom Apertus API failure. Details: {str(e)}") from e
-
-            delay = (0.5 * (2 ** attempt)) + random.uniform(0.1, 0.5)
-            time.sleep(delay)
-
-    raise CancellationEngineError(f"Swisscom Apertus API returned no usable policy for {provider_name}.")
+    # One try with a short timeout: when it fails, the saved answer is shown without an error
+    try:
+        data = claude_cli.ask_json(user_prompt, system_prompt, timeout=CLAUDE_TIMEOUT)
+    except claude_cli.ClaudeCLIError as e:
+        if saved is not None:
+            return saved
+        raise CancellationEngineError(f"Claude could not research the policy: {e}") from e
+    data["_sources"] = search_results  # lets policies_from_rag() drop links not found in the search
+    if search_results:
+        _save_policy(provider_name, sub_type, mode, data)
+    return data
 
 
 # =============================================================================
@@ -361,14 +409,18 @@ def generate_cancellation_letter(
     """Writes the German letter body and stores it as `cancel_policy.email_template`.
 
     In 'after_death' mode `person_name` is the executor writing on behalf of `deceased_name`.
+    Claude's letters are saved with placeholders instead of the personal details. If Claude is
+    unavailable, the saved letter is filled in with the current details, else a fixed template.
     """
-    _require_api_key()
     policy_info = {"cancel_policy": cancel_policy.model_dump(exclude={"email_template", "status", "resolution_notes"})}
     if death_policy is not None and mode == "after_death":
         policy_info["death_policy"] = death_policy.model_dump()
     deceased_line = f"Deceased account holder: {deceased_name}" if mode == "after_death" and deceased_name else ""
 
-    system_prompt = "You write formal legal cancellation letters under Swiss Law."
+    system_prompt = (
+        "You write formal legal cancellation letters under Swiss Law. "
+        "Reply with the letter body only, without any comment before or after it."
+    )
 
     user_prompt = f"""
     Write the BODY of a formal German cancellation letter.
@@ -389,24 +441,68 @@ def generate_cancellation_letter(
     - End with "Mit freundlichen Grüssen,".
     """
 
-    for attempt in range(5):
-        try:
-            response = client.chat.completions.create(
-                model=APERTUS_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.1
-            )
-            letter = response.choices[0].message.content
-            break
-        except Exception as e:
-            if attempt == 4:
-                raise CancellationEngineError("Letter generation failed after retries.") from e
-            delay = (0.5 * (2 ** attempt)) + random.uniform(0.1, 0.5)
-            time.sleep(delay)
+    fields = _letter_fields(person_name, contract_id, deceased_name if mode == "after_death" else None)
+    try:
+        letter = claude_cli.ask(user_prompt, system_prompt, timeout=CLAUDE_TIMEOUT).strip()
+    except claude_cli.ClaudeCLIError:
+        letter = ""
+    if letter:
+        _save_letter(provider_name, sub_type, mode, letter, fields)
+    else:
+        letter = _saved_letter(provider_name, sub_type, mode, fields) or _template_letter(
+            provider_name, sub_type, person_name, contract_id, mode, deceased_name
+        )
 
     # CancelPolicy.execute_action() runs str.format() on the template, so escape literal braces
     cancel_policy.email_template = letter.replace("{", "{{").replace("}", "}}")
     return letter
+
+
+def _template_letter(
+    provider_name: str,
+    sub_type: str,
+    person_name: str,
+    contract_id: str,
+    mode: Mode,
+    deceased_name: Optional[str] = None,
+) -> str:
+    """A fixed German letter body, used when Claude cannot write one. Same structure as Claude's."""
+    plan = sub_type.strip()
+    named = plan and plan.lower() != "subscription"
+    contract = f"das Abonnement «{plan}» bei {provider_name}" if named else f"das Abonnement bei {provider_name}"
+    number = contract_id.strip()
+    number = "" if number in ("", "-") else number
+    number_part = f" (Vertragsnummer {number})" if number else ""
+    subject = f"Betreff: Kündigung {provider_name}" + (f" «{plan}»" if named else "")
+    subject += f", Vertragsnummer {number}" if number else ""
+
+    if mode == "after_death":
+        holder = deceased_name.strip() if deceased_name and deceased_name.strip() else "die Vertragsinhaberin bzw. der Vertragsinhaber"
+        body = [
+            f"{subject} (Todesfall)",
+            "",
+            "Sehr geehrte Damen und Herren,",
+            "",
+            f"hiermit teile ich Ihnen mit, dass {holder} verstorben ist. "
+            f"Es betrifft {contract}{number_part}.",
+            "",
+            f"Im Namen der Erben kündige ich diesen Vertrag per sofort. Gemäss {SWISS_LEGAL_BASIS} "
+            "endet ein solcher Vertrag mit dem Tod der Vertragspartei.",
+            "",
+            "Bitte stellen Sie ab sofort keine weiteren Rechnungen aus, erstatten Sie allfällig "
+            "vorausbezahlte Beträge und bestätigen Sie mir die Kündigung schriftlich.",
+            "",
+            "Eine Kopie der Todesurkunde und des Erbscheins liegt diesem Schreiben bei.",
+        ]
+    else:
+        body = [
+            subject,
+            "",
+            "Sehr geehrte Damen und Herren,",
+            "",
+            f"hiermit kündige ich {contract}{number_part} "
+            "fristgerecht auf den nächstmöglichen Termin.",
+            "",
+            "Bitte bestätigen Sie mir die Kündigung sowie das genaue Vertragsende schriftlich.",
+        ]
+    return "\n".join(body + ["", "Mit freundlichen Grüssen,", person_name.strip()])
