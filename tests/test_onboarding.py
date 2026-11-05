@@ -93,5 +93,5 @@ def test_executor_sees_the_estate_after_the_owner_scanned(app):
     app.session_state["role"] = "Executor"
     app.run()
     assert_clean(app)
-    assert app.title[0].value == "Estate overview"
+    assert app.title[0].value == "Estate of Martina Keller"
     assert 'class="dlv-kpis"' not in text(app)

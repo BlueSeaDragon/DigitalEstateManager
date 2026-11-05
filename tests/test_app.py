@@ -79,9 +79,9 @@ def test_executor_view_is_marked_and_relabelled(app):
     assert_clean(app)
     text = rendered_text(app)
     assert "Executor view" in text and "Worklist" in text
-    assert app.title[0].value == "Estate overview"
-    app.text_input(key="deceased_name").input("Anna Muster").run()
-    assert app.title[0].value == "Estate of Anna Muster"
+    # The owner named themselves during onboarding, so the executor does not type the name
+    assert app.title[0].value == "Estate of Martina Keller"
+    assert not any(t.label == "Name of the deceased" for t in app.text_input)
 
 
 def test_owner_details_show_actions(app):

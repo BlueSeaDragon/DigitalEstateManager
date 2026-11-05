@@ -132,7 +132,7 @@ Status: design approved, 2026-09-24. Branch: `feat/vz-redesign`.
   - Sentence case and verb-first buttons.
   - One short line per explanation.
   - "Legal Notice / Execution Dispatcher" becomes "Notification letter".
-  - The deceased's name is a field in the executor view (replaces "John Doe").
+  - The deceased's name comes from the owner's onboarding, not from the executor (the demo uses the persona, Martina Keller). It titles the executor view and fills the cancellation letters.
 - **Currency:** `CHF 1'234.50`. Default assets use CHF. Rows keep their original currency; totals are
   converted with a fixed FX table and marked "approx.".
 - **Empty states:** one Muted line plus the relevant action.

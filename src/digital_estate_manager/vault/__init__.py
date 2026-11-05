@@ -1,4 +1,5 @@
 from digital_estate_manager.vault.storage import (
+    PERSONA_NAME,
     WISH_OPTIONS,
     calculate_metrics,
     get_default_assets,
@@ -9,6 +10,7 @@ from digital_estate_manager.vault.storage import (
 )
 
 __all__ = [
+    "PERSONA_NAME",
     "WISH_OPTIONS",
     "calculate_metrics",
     "get_default_assets",

@@ -55,6 +55,7 @@ from digital_estate_manager.ui.format import (
     value_display,
 )
 from digital_estate_manager.vault import (
+    PERSONA_NAME,
     WISH_OPTIONS,
     calculate_metrics,
     get_default_assets,
@@ -558,10 +559,9 @@ def render_written_notice(
     sender_name = n1.text_input("Your full name (executor)" if after_death else "Your full name",
                                 key=f"cxl_sender_{mode}_{asset.id}")
     contract_id = n2.text_input("Customer or contract number", value=asset.username, key=f"cxl_contract_{mode}_{asset.id}")
-    deceased = ""
-    if after_death:
-        deceased = st.text_input("Name of the deceased", value=deceased_name, key=f"cxl_deceased_{asset.id}")
-    ready = bool(sender_name.strip()) and (bool(deceased.strip()) or not after_death)
+    # The deceased's name comes from the owner's onboarding, so the executor does not type it.
+    deceased = deceased_name if after_death else ""
+    ready = bool(sender_name.strip())
 
     notices = st.session_state.setdefault("generated_cancel_notices", {})
     notice_key = (asset.id, mode)
@@ -570,7 +570,7 @@ def render_written_notice(
         type="primary",
         icon=":material/edit:" if kind == "email" else ":material/description:",
         disabled=not ready,
-        help=None if ready else ("Enter your name and the name of the deceased first." if after_death else "Enter your name first."),
+        help=None if ready else "Enter your name first.",
         key=f"cxl_write_{mode}_{asset.id}",
     ):
         with st.spinner("Writing your cancellation..."):
@@ -991,10 +991,8 @@ def executor_details(asset: Asset, key: str) -> None:
         if not is_flagged and asset.status not in CLOSED and st.button(
             close_action_label(asset), type="primary", key=f"{key}_exec_cancel"
         ):
-            # The executor page's "Name of the deceased" field (key "deceased_name") prefills the letter
-            cancellation_guide_dialog(
-                asset, mode="after_death", deceased_name=st.session_state.get("deceased_name") or ""
-            )
+            # The owner entered their name during onboarding; in the demo that is the persona
+            cancellation_guide_dialog(asset, mode="after_death", deceased_name=PERSONA_NAME)
         done_key = f"exec_done_{key}"
         st.session_state[done_key] = asset.status in CLOSED
         st.checkbox("Action complete", key=done_key, disabled=is_flagged, on_change=set_done, args=(asset, done_key))
@@ -1512,7 +1510,7 @@ if page == "Assets" and role == "Owner":
 # =============================================================================
 elif page == "Assets":
     estate = [a for a in current_assets if a.status not in ("Removed", "Wrongly Attributed")]
-    named = (st.session_state.get("deceased_name") or "").strip()
+    named = PERSONA_NAME  # entered by the owner during onboarding, not by the executor
     eyebrow = "Estate settlement"
 
     if not estate:
@@ -1535,8 +1533,6 @@ elif page == "Assets":
                     on_click="ignore",
                 )
 
-        st.text_input("Name of the deceased", key="deceased_name", placeholder="Full name",
-                      width=420)
         with st.container(horizontal=True, vertical_alignment="center", gap="small"):
             st.caption("You can flag an account but not remove it.", width="content")
             with st.popover("Why?", type="tertiary"):

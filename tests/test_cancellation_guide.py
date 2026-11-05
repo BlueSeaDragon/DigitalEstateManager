@@ -35,14 +35,15 @@ def open_assets(role: str):
 
 def test_executor_opens_the_guide_in_after_death_mode(research):
     at = open_assets("Executor")
-    at.text_input(key="deceased_name").input("Hans Muster").run()
     next(b for b in at.button if b.key and b.key.startswith("toggle_exe_")).click().run()
     next(b for b in at.button if b.key and b.key.endswith("_exec_cancel")).click().run()
 
     assert not at.exception
     assert research and research[0][2] == "after_death"
-    deceased = next(t for t in at.text_input if t.key and t.key.startswith("cxl_deceased_"))
-    assert deceased.value == "Hans Muster"
+    # The deceased's name comes from onboarding; the executor only enters their own name
+    assert not any(t.key and t.key.startswith("cxl_deceased_") for t in at.text_input)
+    write = next(b for b in at.button if b.key and b.key.startswith("cxl_write_"))
+    assert write.disabled and write.help == "Enter your name first."
 
 
 def test_owner_opens_the_guide_in_during_life_mode(research):
