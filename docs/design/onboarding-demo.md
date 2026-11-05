@@ -61,7 +61,7 @@ screen counts down to the dashboard.
 All onboarding screens hide the sidebar and show a slim top bar: wordmark left, a 1px rule below.
 
 1. **Landing:** eyebrow "Digital estate planning"; the 42px headline; the lead sentence; the orange
-   "Get started" button; one Muted line "Takes about a minute. Read-only access, nothing is stored.";
+   "Get started" button;
    the three-step rule as a preview, nothing current.
 2. **Connect:** step rule with Connect current; title "Connect your sources"; two equal cards.
    - *Gmail* (step 1): "Read-only access to billing emails." One "Connect Gmail" link button to Google.

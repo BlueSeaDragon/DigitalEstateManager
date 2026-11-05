@@ -1257,7 +1257,6 @@ def onboarding_landing() -> None:
     )
     with st.container(key="cta_orange"):
         st.button("Get started", type="primary", key="onb_start", on_click=set_onboarding, args=("connect",))
-    ui.muted("Takes about a minute. Read-only access, nothing is stored.")
     ui.step_rule(0)
 
 

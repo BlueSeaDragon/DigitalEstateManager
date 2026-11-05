@@ -132,6 +132,18 @@
     "checked": "2026-09-24"
   },
   {
+    "website": "postfinance.ch",
+    "legacy_policy_url": "https://www.postfinance.ch/en/support/services/death/information-for-bereaved.html",
+    "summary": "PostFinance requires a death certificate to manage a deceased person’s account. Accounts must be closed within 12 months; otherwise, estate management fees apply. Legitimate heirs or authorized persons can access information with official documents, and existing powers of attorney continue but may be restricted.",
+    "tick_boxes": {
+      "owner_can_appoint_successor": null,
+      "heirs_can_request_access": true,
+      "subscription_or_balance_addressed": true,
+      "proof_required": true
+    },
+    "checked": "2026-09-25"
+  },
+  {
     "website": "spotify.com",
     "legacy_policy_url": "not found",
     "summary": "none",
