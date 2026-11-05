@@ -222,7 +222,10 @@ __marimo__/
 .env
 
 # Subscription finder: private data, secrets, outputs
-data/
+data/*
+# ...except the shared AI results (public provider terms only), so the demo works without Claude
+!data/legacy_policy_demo.json
+!data/cancel_policies_saved.json
 credentials.json
 token.json
 output/

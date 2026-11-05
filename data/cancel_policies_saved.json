@@ -1,0 +1,152 @@
+{
+  "swisscom|subscription|after_death": {
+    "minimum_contract_duration": "Immediate (upon notification of death)",
+    "notice_period": "Immediate (upon notification of death)",
+    "primary_channel": "phone_call",
+    "requires_sub_type_selection": false,
+    "sub_type_options": [],
+    "channel_instructions": [
+      "Open the official Swisscom bereavement page (https://www.swisscom.ch/de/privatkunden/hilfe/daten-und-rechnungen/todesfall.html) and choose whether to cancel or take over the deceased person's subscription.",
+      "Alternatively, call the Swisscom hotline at 0800 800 800 to report the death and request cancellation or takeover of the subscription.",
+      "Have the Todesurkunde (Death Certificate) and the Erbenschein ready, and provide customer number, phone number(s) and address of the deceased person if available.",
+      "Submit the documents as instructed by Swisscom (via the bereavement page or the hotline) and request written confirmation of the cancellation.",
+      "Check that the final invoice (Schlussrechnung) is sent to the address of the deceased or the executor, and settle it with the estate.",
+      "If you have access to the deceased person's Swisscom login, you can also follow the Swisscom Community guide (Scenario 3) to cancel while keeping the address."
+    ],
+    "portal_url": "https://www.swisscom.ch/de/privatkunden/hilfe/daten-und-rechnungen/todesfall.html",
+    "policy_url": "https://www.swisscom.ch/de/privatkunden/hilfe/daten-und-rechnungen/todesfall.html",
+    "contact_email": "",
+    "contact_phone": "0800 800 800",
+    "mailing_address": "",
+    "required_docs": [
+      "Todesurkunde (Death Certificate)",
+      "Erbenschein",
+      "Proof of identity of the person reporting (executor/heir)",
+      "Customer number or phone number of the deceased person (if available)"
+    ],
+    "has_mourning_portal": true,
+    "mourning_portal_url": "https://www.swisscom.ch/de/privatkunden/hilfe/daten-und-rechnungen/todesfall.html",
+    "_sources": [
+      "Title: Todesfall melden: Abo kündigen oder übernehmen - Swisscom\nSnippet: Wir bedauern deinen Verlust und ermöglichen eine unkomplizierte Kündigung oder Übernahme des Abos der verstorbenen Person – ohne unerwartete Kosten.\nURL: https://www.swisscom.ch/de/privatkunden/hilfe/daten-und-rechnungen/todesfall.html",
+      "Title: Swisscom Todesfall kündigen: Anleitung Schritt für Schritt\nSnippet: Sep 7, 2026 · Swisscom im Todesfall Abo kündigen — so geht es richtig. Kündigungsfrist berechnen, Kündigung formulieren, Bestätigung erhalten. Für Schweiz und Deutschland.\nURL: https://abotracker.ch/kuendigen/swisscom-todesfall",
+      "Title: Todesfall - Swisscom Community\nSnippet: Swisscom Support Löse dein Anliegen in My Swisscom, im Chat oder mithilfe von Schritt-für-Schritt-Anleitungen.\nURL: https://community.swisscom.ch/d/766723-todesfall",
+      "Title: Swisscom Todesfall melden: Vertrag auflösen | AboTracker\nSnippet: Sep 7, 2026 · Swisscom-Vertrag nach einem Todesfall auflösen oder übernehmen: welche Unterlagen nötig sind, wer melden darf und wie die Kündigungsfrist behandelt wird.\nURL: https://abotracker.ch/anbieter/swisscom-todesfall",
+      "Title: VERSTORBEN - Swisscom Community\nSnippet: Sep 30, 2023 · Es gibt hier mehr Informationen zum Thema Todesfall und deinen Möglichkeiten. Wenn du den Vertrag deiner Eltern kündigen möchtest und bereits Zugriff auf ihr Swisscomlogin hast, kannst du dieser Anleitung folgen (Szenario 3), um die Adresse zu behalten.\nURL: https://community.swisscom.ch/d/787118-verstorben",
+      "Title: Todesfall melden: Abo kündigen oder übernehmen - Swisscom\nSnippet: Wir bedauern deinen Verlust und ermöglichen eine unkomplizierte Kündigung oder Übernahme des Abos der verstorbenen Person - ohne unerwartete Kosten.\nURL: https://www.swisscom.ch/de/privatkunden/hilfe/daten-und-rechnungen/todesfall.html",
+      "Title: Swisscom Todesfall kündigen: Anleitung Schritt für Schritt\nSnippet: Swisscom im Todesfall Abo kündigen — so geht es richtig. Kündigungsfrist berechnen, Kündigung formulieren, Bestätigung erhalten. Für Schweiz und Deutschland.\nURL: https://abotracker.ch/kuendigen/swisscom-todesfall",
+      "Title: Swisscom, Sunrise oder Salt nach einem Todesfall kündigen: Kosten und ...\nSnippet: Ein Swisscom-Abonnement nach einem Todesfall kündigen Swisscom bietet ein vereinfachtes Verfahren für die Kündigung eines Abonnements bei Todesfall. Die Erben müssen eine Kopie der Sterbeurkunde und einen Nachweis ihrer Erbenstellung (Erbschein oder notarielle Bescheinigung) vorlegen.\nURL: https://www.funere.com/ch-de/blog/swisscom-sunrise-oder-salt-nach-einem-todesfall-kundigen-kosten-und-verfahren",
+      "Title: Swisscom Todesfall melden 2026: was nach der Kündigung kommt\nSnippet: 🧰 Direkt zur Todesfall-Checkliste Telekom ↓ Von sieben Vertragsdokumenten, die Swisscom für Privatkunden veröffentlicht, regelt ein einziges den Todesfall. Was gilt, steht vor allem auf der Hilfeseite, und dort zeigt sich: Die Kündigung ist der einfache Teil. Danach geht die Schlussrechnung an die Adresse der verstorbenen Person, das Prepaid-Handy verliert nach 12 Monaten ohne Nutzung ...\nURL: https://www.conviva-plus.ch/?page=3455",
+      "Title: VERSTORBEN - Swisscom Community\nSnippet: Kioflauniem49 Ja, das geht, siehe hier: Todesfall: Vertrag kündigen/übernehmen - Hilfe | Swisscom am besten die Hotline 0800 800800 anrufen.\nURL: https://community.swisscom.ch/d/787118-verstorben"
+    ]
+  },
+  "spotify|premium duo|during_life": {
+    "minimum_contract_duration": "None. Spotify Premium Duo is a monthly subscription with no minimum contract term.",
+    "notice_period": "No fixed notice period. The subscription can be cancelled at any time and remains active until the end of the current billing period.",
+    "primary_channel": "web_portal",
+    "requires_sub_type_selection": false,
+    "sub_type_options": [],
+    "channel_instructions": [
+      "Open https://support.spotify.com/ch-de/article/cancel-premium/ and follow the cancellation steps for Premium.",
+      "Log in to your Spotify account on the web (not only in the app) and go to the account page / subscription overview.",
+      "Select your plan (Premium Duo) and choose the option to cancel the subscription (Abo kündigen).",
+      "Confirm the cancellation by following the on-screen prompts. Premium Duo features stay available until the end of the current billing period.",
+      "If you cannot log in, use the cancellation form at https://www.spotify.com/de/signed-out/cancel/ and submit it to Spotify.",
+      "If you subscribed through a partner provider or an app store (e.g. Apple, Google), cancel there instead, as Spotify cannot cancel those billing arrangements directly.",
+      "Keep the cancellation confirmation (email or screenshot) as proof."
+    ],
+    "portal_url": "https://support.spotify.com/ch-de/article/cancel-premium/",
+    "policy_url": "https://www.spotify.com/de/legal/duo/Um/",
+    "contact_email": "",
+    "contact_phone": "",
+    "mailing_address": "",
+    "required_docs": [],
+    "has_mourning_portal": false,
+    "mourning_portal_url": "",
+    "_sources": [
+      "Title: So kündigst du dein Premium Abo - Spotify\nSnippet: In diesem Artikel findest du weitere Infos zur Problembehebung, wenn dein Premium Abo nicht funktioniert. Hinweis: Du kannst dein Abo auch kündigen, indem du dieses Formular ausfüllst und an Spotify sendest.\nURL: https://support.spotify.com/ch-de/article/cancel-premium/",
+      "Title: Support - Spotify\nSnippet: Wir helfen dir gern weiter. Finde heraus, wie du Spotify einrichtest und verwendest. Erfahre mehr über Features und Lösungen bei Problemen. Alle deine Fragen werden beantwortet. Alles, was du für optimalen Musikgenuss brauchst. Für Hörer*innen, Künstler*innen, Marken, Entwickler*innen und Musikfans.\nURL: https://support.spotify.com/ch-de/",
+      "Title: Abo kündigen - Spotify\nSnippet: Fülle dieses Formular aus und reiche es ein, um mit der Kündigung fortzufahren. Du kannst dich auch bei deinem Spotify Konto anmelden und das Abo direkt kündigen.\nURL: https://www.spotify.com/de/signed-out/cancel/",
+      "Title: Kontakt - Spotify\nSnippet: Community: Hier erhältst du schnellen Support von erfahrenen Spotify Nutzern*innen. Wenn du die gewünschten Informationen hier nicht findest, stell einfach deine Frage und warte auf eine Antwort.\nURL: https://www.spotify.com/ch-de/about-us/contact/",
+      "Title: Spotify kündigen: Anleitung Schritt für Schritt | AboTracker\nSnippet: Apr 1, 2026 · Spotify Abo kündigen — so geht es richtig. Kündigungsfrist berechnen, Kündigung formulieren, Bestätigung erhalten. Für Schweiz und Deutschland.\nURL: https://abotracker.ch/kuendigen/spotify",
+      "Title: So kündigst du dein Premium Abo - Spotify\nSnippet: In diesem Artikel findest du weitere Infos zur Problembehebung, wenn dein Premium Abo nicht funktioniert. Hinweis: Du kannst dein Abo auch kündigen, indem du dieses Formular ausfüllst und an Spotify sendest.\nURL: https://support.spotify.com/de/article/cancel-premium/",
+      "Title: Spotify Premium kündigen? Anleitung für Web, App ...\nSnippet: Apr 30, 2026 · Du möchtest dein Spotify Premium Abo kündigen? Hier findest du die Schritt-für-Schritt-Anleitung für Browser, iPhone, Android und Partneranbieter.\nURL: https://www.sidify.de/guide/spotify-premium-kuendigen.html",
+      "Title: Abo kündigen - Spotify\nSnippet: Abo kündigen Fülle dieses Formular aus und reiche es ein, um mit der Kündigung fortzufahren. Du kannst dich auch bei deinem Spotify Konto anmelden und das Abo direkt kündigen.\nURL: https://www.spotify.com/de/signed-out/cancel/",
+      "Title: Zusätzliche Nutzungsbedingungen für Spotify® Premium Duo\nSnippet: Jul 1, 2020 · Du kannst das Premium Duo-Abo jederzeit nach Maßgabe der Allgemeinen Nutzungsbedingungen von Spotify kündigen, indem du dich bei deinem Spotify-Konto anmeldest und den Anweisungen auf der Kontoseite folgst, oder indem du hier klickst und die Anweisungen befolgst.\nURL: https://www.spotify.com/de/legal/duo/Um/",
+      "Title: Spotify kündigen: Premium-Abo beenden – so geht's\nSnippet: Dec 9, 2025 · In diesem Artikel findest Du eine übersichtlichen Anleitung, mit der Du Dein Premium-Abonnement bei Spotify ganz einfach beendest, wenn Du den Dienst nicht mehr nutzen willst.\nURL: https://www.vodafone.de/featured/article/spotify-kuendigen-premium-abo-so-gehts-244871"
+    ]
+  },
+  "postfinance e-finance|subscription|during_life": {
+    "minimum_contract_duration": "None. The account/e-finance access has no minimum contract duration.",
+    "notice_period": "No fixed notice period. Cancellation is free of charge and is usually processed within two business days.",
+    "primary_channel": "web_portal",
+    "requires_sub_type_selection": false,
+    "sub_type_options": [],
+    "channel_instructions": [
+      "Log in to PostFinance e-finance (or the PostFinance App).",
+      "Open the account you want to close and select the cancel account option (Konto kündigen).",
+      "Follow the on-screen steps, including specifying where the remaining balance should be transferred.",
+      "Confirm the cancellation. It is free of charge and is usually processed within two business days.",
+      "For details, see the cancellation guide: https://www.postfinance.ch/en/support/accounts/cancel-account.html"
+    ],
+    "portal_url": "https://www.postfinance.ch/en/support/accounts/cancel-account.html",
+    "policy_url": "https://www.postfinance.ch/en/support/accounts/cancel-account.html",
+    "contact_email": "",
+    "contact_phone": "",
+    "mailing_address": "",
+    "required_docs": [],
+    "has_mourning_portal": false,
+    "mourning_portal_url": "",
+    "_sources": [
+      "Title: Contact and support - PostFinance\nSnippet: PostFinance is here to help you with your financial questions. You can take care of many matters 24/7 online.\nURL: https://www.postfinance.ch/en/support.html",
+      "Title: Konto kündigen - PostFinance\nSnippet: Konto kündigen Schade, dass Sie Ihr Konto auflösen möchten. Ihr Konto können Sie kostenlos und in der Regel innerhalb von zwei Arbeitstagen einfach und schnell im E-Finance oder in der PostFinance App kündigen.\nURL: https://www.postfinance.ch/de/support/konten/konto-kuendigen.html",
+      "Title: PostFinance Adresse: Hotline, Telefon, Fax und E-Mail\nSnippet: PostFinance Adresse in Bern, Hotline, Telefon, Fax und E-Mail zur Kontaktaufnahme mit dem PostFinance Kundenservice.\nURL: https://www.kuendigen.at/adresse/postfinance/",
+      "Title: PostFinance Kontakt: Telefon-Hotline & Adresse - capitalo.ch\nSnippet: PostFinance kontaktieren: Telefon-Hotline, Adresse & Öffnungszeiten (Stand: 2026). Alle Kontaktdaten für den Kundenservice auf einen Blick.\nURL: https://www.capitalo.ch/anbieter/postfinance/kontakt",
+      "Title: Cancel account - PostFinance\nSnippet: Cancel your account quickly and free of charge in e-finance or in the PostFinance App. More information is available here.\nURL: https://www.postfinance.ch/en/support/accounts/cancel-account.html",
+      "Title: Konto kündigen - PostFinance\nSnippet: Kündigen Sie Ihr Konto kostenlos und schnell im E-Finance oder in der PostFinance App. Weitere Infos finden Sie hier.\nURL: https://www.postfinance.ch/de/support/konten/konto-kuendigen.html",
+      "Title: PostFinance kündigen - Muster Vorlage zur KündigungKündigen Postfinance | StopeePostfinance kündigen? | TerminationExpertsPostfinance kündigen? Einfach mit Termination ExpertsKündigen Postfinance | Stopee\nSnippet: Feb 19, 2020 · Wir zeigen dir, wie du deinen Vertrag mit PostFinance per Fax kündigst. Der Vorteil einer Kündigung per Fax: Du kannst in letzter Minute, bevor die Kündigungsfrist abläuft, deine Kündigung verschicken. Sie können Ihr Postfinance-Konto schriftlich kündigen, entweder per E-Mail oder per Einschreiben. Stellen Sie sicher, dass Sie alle notwendigen Informationen in Ihrem Kündigungsschreiben angeben. Jul 26, 2025 · Sie können Ihr Postfinance-Abonnement jederzeit über Termination Experts kündigen. Wir sorgen dafür, dass Ihre Kündigung zu einem für Sie passenden Zeitpunkt erfolgt – ganz ohne Sorgen um den Ablauf. Jun 28, 2025 · Sie können Ihr Postfinance-Abonnement jederzeit über Termination Experts kündigen. Wir sorgen dafür, dass Ihre Kündigung zu einem für Sie passenden Zeitpunkt erfolgt – ganz ohne Sorgen um den Ablauf. Die Lösung: Kündigen Sie das ganze Paket, wenn Sie nicht mehr bei Postfinance sein wollen. Oder kündigen Sie gezielt nur die Karte, wenn Sie das Konto noch brauchen.\nURL: https://www.kuendigung.org/postfinance-kuendigen/",
+      "Title: Kündigen Postfinance | Stopee\nSnippet: Sie können Ihr Postfinance-Konto schriftlich kündigen, entweder per E-Mail oder per Einschreiben. Stellen Sie sicher, dass Sie alle notwendigen Informationen in Ihrem Kündigungsschreiben angeben.\nURL: https://www.stopee.com/de-de/letters/banking/kuendigen-postfinance/",
+      "Title: Postfinance kündigen? | TerminationExperts\nSnippet: Jul 26, 2025 · Sie können Ihr Postfinance-Abonnement jederzeit über Termination Experts kündigen. Wir sorgen dafür, dass Ihre Kündigung zu einem für Sie passenden Zeitpunkt erfolgt – ganz ohne Sorgen um den Ablauf.\nURL: https://terminationexperts.com/de-CH/postfinance"
+    ]
+  },
+  "linkedin|premium business|after_death": {
+    "minimum_contract_duration": "Immediate (upon notification of death)",
+    "notice_period": "Immediate (upon notification of death)",
+    "primary_channel": "web_portal",
+    "requires_sub_type_selection": false,
+    "sub_type_options": [],
+    "channel_instructions": [
+      "Open the LinkedIn Help page for deceased members: https://www.linkedin.com/help/linkedin/answer/a1380121/verstorbenes-linkedin-mitglied-profil-entfernen?lang=de and choose the option to close the account or memorialize the profile of a deceased member (report the member as deceased if you are not authorized to act on their behalf).",
+      "Prepare the required documents: Todesurkunde (Death Certificate) and Erbenschein, plus proof of your identity and your relationship to the deceased.",
+      "Submit the request with the member's profile URL, the member's name and the date of death, and upload the documents through the form.",
+      "To cancel the LinkedIn Premium Business subscription, follow the instructions at https://www.linkedin.com/help/linkedin/answer/a545579/linkedin-premium-mitgliedschaft-kundigen?lang=de and select the option matching how the subscription was purchased (LinkedIn website, Apple App Store, Google Play, or invoice/sales contact).",
+      "If the portal does not allow completion, contact LinkedIn Customer Support via https://www.linkedin.com/help/linkedin/answer/a518597?lang=de (chat or ticket; no hotline or support email exists) and reference the notification of death under Swiss Law (OR Art. 405).",
+      "Request written confirmation of the cancellation, the stop of future charges, and any pro-rata refund for the period after death. Keep it with the estate records."
+    ],
+    "portal_url": "https://www.linkedin.com/help/linkedin/answer/a545579/linkedin-premium-mitgliedschaft-kundigen?lang=de",
+    "policy_url": "",
+    "contact_email": "",
+    "contact_phone": "",
+    "mailing_address": "",
+    "required_docs": [
+      "Todesurkunde (Death Certificate)",
+      "Erbenschein",
+      "Identity document of the executor/heir",
+      "Link to the deceased member's LinkedIn profile",
+      "Date of death"
+    ],
+    "has_mourning_portal": true,
+    "mourning_portal_url": "https://www.linkedin.com/help/linkedin/answer/a1380121/verstorbenes-linkedin-mitglied-profil-entfernen?lang=de",
+    "_sources": [
+      "Title: Den LinkedIn Kundensupport kontaktieren | LinkedIn Hilfe\nSnippet: Der LinkedIn Hilfebereich enthält Ressourcen, Hinweise zur Problembehebung und Tipps zum Einsatz unserer Produkte. Wenn Sie weitere Fragen haben, erreichen Sie unser Kundensupport-Team über den ...\nURL: https://www.linkedin.com/help/linkedin/answer/a518597?lang=de-DE",
+      "Title: LinkedIn Hilfe\nSnippet: LinkedIn Hilfe - Brauchen Sie Hilfe bei der Nutzung von LinkedIn? LinkedIn Hilfe ist für Sie da und beantwortet Ihre Fragen.\nURL: https://www.linkedin.com/help/linkedin?lang=de",
+      "Title: Contact LinkedIn customer support | LinkedIn Help\nSnippet: The LinkedIn Help Center contains resources, troubleshooting tips, and useful information to help you use our products. If you have additional questions, you can reach our customer support team ...\nURL: https://www.linkedin.com/help/linkedin/answer/a518597/hilfe-erhalten-und-den-linkedin-kundenservice-kontaktieren",
+      "Title: LinkedIn Support kontaktieren: So erreichst du ihn\nSnippet: LinkedIn hat keine Hotline und keine Support-Adresse. So erreichst du den Kundenservice per Chat oder Ticket und findest den passenden Weg.\nURL: https://compleadly.de/blog/linkedin-kontakt-so-erreichen-sie-den-linkedin-kundendienst-und-support",
+      "Title: Wie kann ich den Support von LinkedIn erreichen? (FAQ)\nSnippet: Der Kundenservice von LinkedIn ist ausschließlich online zu erreichen. Wir erklären die Möglichkeiten für Anfragen an den Support.\nURL: https://www.die-profiloptimierer.de/faq-items/wie-kann-ich-den-support-von-linkedin-erreichen/",
+      "Title: LinkedIn Premium-Mitgliedschaft kündigen | LinkedIn Hilfe\nSnippet: Wählen Sie unten die Option aus, die beschreibt, wie Sie Ihre Premium-Mitgliedschaft erworben haben, um den Vorgang korrekt abzuschließen.\nURL: https://www.linkedin.com/help/linkedin/answer/a545579/linkedin-premium-mitgliedschaft-kundigen?lang=de",
+      "Title: Verstorbenes LinkedIn Mitglied | LinkedIn Hilfe\nSnippet: Wenn Sie nicht im Namen eines verstorbenen Mitglieds handeln dürfen, können Sie die Person als verstorben melden.\nURL: https://www.linkedin.com/help/linkedin/answer/a1380121/verstorbenes-linkedin-mitglied-profil-entfernen?lang=de",
+      "Title: Beitrag von Antonella Di Iorio - LinkedIn Deutschland\nSnippet: Ich dachte die Antwort könnte auch andere Personen aus meinem Netzwerk interessieren: 📌 Nach dem Ableben kann das LinkedIn Profil entweder geschlossen oder in den «Gedenkzustand» versetzt werden.\nURL: https://de.linkedin.com/posts/antonelladiiorio_das-konto-eines-verstorbenen-mitglieds-in-activity-7239867908665839617-QraG",
+      "Title: Beitrag von Sabine Haldemann - LinkedIn Deutschland\nSnippet: Ich dachte die Antwort könnte auch andere Personen aus meinem Netzwerk interessieren: 📌 Nach dem Ableben kann das LinkedIn Profil entweder geschlossen oder in den «Gedenkzustand» versetzt werden.\nURL: https://de.linkedin.com/posts/sabine-haldemann_das-konto-eines-verstorbenen-mitglieds-in-activity-7239938570382114816-YtPV",
+      "Title: Was passiert mit LinkedIn, wenn Sie sterben? In Remembrance\nSnippet: Oct 2, 2026 · LinkedIn versieht ein Profil mit einem „In remembrance“-Abzeichen oder schließt es für den Nachlass. Welche Dokumente LinkedIn akzeptiert und was sich innerhalb von 48 Stunden ändert.\nURL: https://www.afterlife.ai/de/what-happens-to-linkedin-when-you-die"
+    ]
+  }
+}
