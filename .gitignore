@@ -236,3 +236,6 @@ token*.json
 
 # Owner wishes saved by the app (personal data)
 data/wishes.json
+
+# macOS folder metadata
+.DS_Store
