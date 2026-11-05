@@ -29,13 +29,11 @@ MONTHLY = [
     ("SWISSCOM (SCHWEIZ) AG Mobile Abo", "4814", 28, 65.00, "CHF", 17, None),
     ("OPENAI *CHATGPT SUBSCR San Francisco", "5734", 19, 20.00, "USD", 11, None),
     ("ADOBE *CREATIVE CLOUD PHOTO Dublin", "5734", 22, 13.50, "CHF", 17, 6),  # cancelled ~6 months ago
-    ("UPDATE FITNESS AG Mitgliedschaft", "7997", 1, 79.00, "CHF", 17, None),
     ("NZZ Digital Abo monthly", "5994", 9, 39.00, "CHF", 17, None),
     ("DISNEY PLUS Monthly subscription", "4899", 24, 12.90, "CHF", 3, None),  # new, few charges
 ]
 YEARLY = [
     ("MICROSOFT*365 FAMILY annual renewal", "5734", 5, 99.00, "CHF", 5),
-    ("SBB CFF FFS Halbtax Abo renewal", "4112", 2, 190.00, "CHF", 3),
 ]
 # Supplementary health insurance, paid by standing order.
 INSURANCE = ("Dauerauftrag HELSANA Zusatzversicherung", "6300", 1, 48.60, "CHF")
@@ -80,7 +78,7 @@ def _noise_amount(rng: random.Random, mu: float, sigma: float) -> float:
             return value
 
 
-def generate(end: date, seed: int = 38) -> list[dict]:
+def generate(end: date, seed: int = 52) -> list[dict]:
     rng = random.Random(seed)
     rows: list[dict] = []
 
@@ -115,7 +113,7 @@ def generate(end: date, seed: int = 38) -> list[dict]:
             rows.append(_row(start + timedelta(days=rng.randint(0, 27)), _noise_amount(rng, 3.8, 0.8), place, "5812", rng=rng))
         if rng.random() < 0.6:
             rows.append(_row(start + timedelta(days=rng.randint(0, 27)), _noise_amount(rng, 3.0, 0.9),
-                             "SBB CFF FFS Billett", "4111", rng=rng))
+                             "SBB CFF FFS Klassenwechsel", "4111", rng=rng))  # she has a GA (inventory)
         if rng.random() < 0.45:
             rows.append(_row(start + timedelta(days=rng.randint(0, 27)), _noise_amount(rng, 4.6, 0.6),
                              "DIGITEC GALAXUS AG", "5732", rng=rng))

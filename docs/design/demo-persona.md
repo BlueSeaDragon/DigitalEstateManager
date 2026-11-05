@@ -22,7 +22,7 @@ Google and Facebook. Lea and Jonas share the custody account; Jonas gets the cry
 
 | Data | File | Used by |
 |---|---|---|
-| Starter inventory (13 accounts) | `get_default_assets()` in `src/digital_estate_manager/vault/storage.py` | Owner and executor views when onboarding is off |
+| Starter inventory (16 accounts) | `get_default_assets()` in `src/digital_estate_manager/vault/storage.py` | Owner and executor views when onboarding is off |
 | 18-month bank and Visa statement | `samples/demo_transactions.jsonl`, made by `samples/make_demo_transactions.py` | *Scan my digital footprint* and onboarding |
 | Legacy policies | `data/legacy_policy_demo.json` | Policy summaries of known providers |
 
@@ -45,16 +45,19 @@ forgot. A scan therefore adds new rows (to review) instead of duplicating the in
 | LinkedIn Premium | Social + subscription (USD) | Memorialize | Hand-written policy, USD converted to CHF |
 | 1Password Families | Password manager + subscription (USD) | Pass to heir: Thomas Keller | Generic asset with custom properties |
 | Hostpoint (keller-architektur.ch) | Domain + subscription | Other: keep site 12 months | Annual billing |
+| SBB GA Travelcard | Subscription (annual) + SwissPass | Cancel/Deactivate | Refund of unused months, email template |
+| PureGym | Gym subscription (monthly) | Cancel/Deactivate | Direct debit that runs on until cancelled |
+| Swiss Post customer account | Postal services (free) | Other: redirect mail to Thomas | Manual steps, SwissID login |
 | Dropbox | Cloud | none | Status *Cancelled* |
 | Galaxus | Online shop | none | Wish still to set |
 
-The statement adds, when scanned: Netflix, Swisscom mobile, ChatGPT (USD), Update Fitness, NZZ,
-Disney+ (new, few charges), Microsoft 365 and SBB Halbtax (yearly), Helsana (standing order) and
+The statement adds, when scanned: Netflix, Swisscom mobile, ChatGPT (USD), NZZ,
+Disney+ (new, few charges), Microsoft 365 (yearly), Helsana (standing order) and
 Adobe (stopped about 6 months ago, so *possibly cancelled*). Salary, groceries, restaurants, train
-tickets and a refunded Zalando order are noise the finder must ignore.
+class upgrades (she has a GA) and a refunded Zalando order are noise the finder must ignore.
 
 ## Before a demo
 
-- `python samples/make_demo_transactions.py` so the history ends today. Seed 38 finds all subscriptions
-  with no false series for at least two months after 2026-09-25; recheck if you change the data.
+- `python samples/make_demo_transactions.py` so the history ends today. Seed 52 finds all subscriptions
+  with no false series for at least 90 days after 2026-11-05; recheck if you change the data.
 - Delete `data/wishes.json` to reset wishes changed during a rehearsal to the persona's defaults.

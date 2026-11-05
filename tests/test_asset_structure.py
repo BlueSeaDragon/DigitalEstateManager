@@ -94,10 +94,10 @@ def test_asset_creation_and_table_serialization():
 
 def test_default_assets_and_metrics():
     assets = get_default_assets()
-    assert len(assets) == 13
+    assert len(assets) == 16
     metrics = calculate_metrics(assets)
-    assert metrics["total_services"] == 13
-    assert metrics["unique_providers"] == 13
+    assert metrics["total_services"] == 16
+    assert metrics["unique_providers"] == 16
     assert metrics["cancelled_count"] == 1  # Dropbox
     assert metrics["critical_recovery_count"] == 3  # Coinbase, PostFinance, UBS
     assert metrics["monthly_drain_prevented_chf"] > 0
@@ -157,7 +157,7 @@ def test_owner_removal_and_wrongly_attributed_audit():
     metrics_after_wrong = calculate_metrics(assets)
     assert metrics_after_wrong["wrongly_attributed_count"] == 1
     # Remains in total estate records
-    assert len(assets) == 13
+    assert len(assets) == 16
 
     # 4. Table serialization preserves these statuses
     row_removed = target.to_table_row()

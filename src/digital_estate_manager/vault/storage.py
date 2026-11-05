@@ -302,6 +302,175 @@ def get_default_assets() -> List[Asset]:
             wish="Other: keep the website online for 12 months, then let the domain lapse",
             notes="Website and email of the architecture practice.",
         ),
+        Asset(
+            service="SBB GA Travelcard",
+            service_address="https://sbb.ch",
+            username="SwissPass 7AB3-K9XQ (martina.keller@gmail.com)",
+            death_policy=with_legacy_record(
+                DeathPolicy(
+                    summary=(
+                        "The GA is personal and cannot be passed on. It ends with the holder's death; the executor "
+                        "asks SBB to stop the subscription and to refund the months not yet used."
+                    ),
+                    supports_legacy_contact=False,
+                    requires_probate=False,
+                    required_documents=["Death Certificate", "SwissPass card or customer number", "Proof of Executor Authority"],
+                    data_disposition="delete",
+                    official_portal_url="https://www.sbb.ch/en/help-and-contact.html",
+                    security_warning="Block the SwissPass card too: it also holds the ski pass and the PubliBike login.",
+                ),
+                "https://sbb.ch",
+            ),
+            cancel_policy=CancelPolicy(
+                action_name="Cancel GA subscription",
+                action_type="cancel_subscription",
+                execution_method="email_notice",
+                target_url="https://www.sbb.ch/en/help-and-contact.html",
+                required_documents=["Death Certificate", "SwissPass card or customer number", "Proof of Executor Authority"],
+                steps=[
+                    "Contact SBB customer service (online form or any staffed SBB ticket office)",
+                    "Give the SwissPass customer number and send the death certificate",
+                    "Ask SBB to end the GA subscription and refund the unused months",
+                    "Return or destroy the SwissPass card once SBB confirms",
+                ],
+                email_template=(
+                    "To SBB Customer Service,\n\n"
+                    "I am the executor of the estate of {deceased_name}, who has passed away.\n"
+                    "Service: {service} ({service_address})\n"
+                    "SwissPass / customer account: {username}\n\n"
+                    "Please end the GA subscription as of the date of death and refund the months not yet used "
+                    "to the estate. The death certificate and my executor authority are attached.\n\n"
+                    "Sincerely,\n{executor_name}"
+                ),
+            ),
+            asset_infos=[
+                SubscriptionAssetInfo(
+                    currency="CHF",
+                    cost_monthly=332.92,
+                    plan_tier="GA Travelcard 2nd class, adult (CHF 3'995 per year)",
+                    billing_cycle="annual",
+                    auto_renew=True,
+                    renewal_date="2027-03-01",
+                    payment_method_hint="Mastercard ending 3309",
+                ),
+                GenericAssetInfo(
+                    category_name="Public Transport",
+                    custom_properties={
+                        "SwissPass card": "7AB3-K9XQ, valid until 03/2030",
+                        "Also on the card": "Ski pass Flumserberg, PubliBike",
+                    },
+                ),
+            ],
+            heir="Thomas Keller",
+            wish="Cancel/Deactivate",
+            notes="Commutes Zurich-Winterthur for site visits. Renews every March unless cancelled.",
+        ),
+        Asset(
+            service="PureGym",
+            service_address="https://puregym.ch",
+            username="Member no. 30418877 (martina.keller@gmail.com)",
+            death_policy=with_legacy_record(
+                DeathPolicy(
+                    summary=(
+                        "The membership is personal and ends with the member's death. The monthly direct debit continues "
+                        "until the executor cancels it, so cancel early and ask for any amount charged after the date "
+                        "of death to be refunded."
+                    ),
+                    supports_legacy_contact=False,
+                    requires_probate=False,
+                    required_documents=["Death Certificate", "Member number", "Proof of Executor Authority"],
+                    data_disposition="lapse_on_nonpayment",
+                    official_portal_url="https://puregym.ch",
+                ),
+                "https://puregym.ch",
+            ),
+            cancel_policy=CancelPolicy(
+                action_name="Cancel gym membership",
+                action_type="cancel_subscription",
+                execution_method="email_notice",
+                target_url="https://puregym.ch",
+                required_documents=["Death Certificate", "Member number", "Proof of Executor Authority"],
+                steps=[
+                    "Send the cancellation notice with the member number to PureGym customer service",
+                    "Attach the death certificate and ask for cancellation as of the date of death",
+                    "Ask for a refund of any monthly fee charged after the date of death",
+                    "Check the next Mastercard statement for a further charge",
+                ],
+                email_template=(
+                    "To PureGym Customer Service,\n\n"
+                    "I am the executor of the estate of {deceased_name}, who has passed away.\n"
+                    "Service: {service} ({service_address})\n"
+                    "Member: {username}\n\n"
+                    "Please cancel the membership as of the date of death, stop the monthly payment and refund any "
+                    "fee charged after that date. The death certificate is attached.\n\n"
+                    "Sincerely,\n{executor_name}"
+                ),
+            ),
+            asset_infos=[
+                SubscriptionAssetInfo(
+                    currency="CHF",
+                    cost_monthly=49.90,
+                    plan_tier="Flex monthly, all Swiss gyms",
+                    billing_cycle="monthly",
+                    auto_renew=True,
+                    renewal_date="2026-12-01",
+                    payment_method_hint="Mastercard ending 3309",
+                ),
+                GenericAssetInfo(
+                    category_name="Gym",
+                    custom_properties={"Home gym": "PureGym Zürich Oerlikon", "Entry": "App QR code, no card"},
+                ),
+            ],
+            wish="Cancel/Deactivate",
+            notes="Monthly membership, cancellable at the end of any month. Goes twice a week before work.",
+        ),
+        Asset(
+            service="Swiss Post customer account",
+            service_address="https://post.ch",
+            username="SwissID martina.keller@gmail.com",
+            death_policy=with_legacy_record(
+                DeathPolicy(
+                    summary=(
+                        "The account is free and tied to her SwissID login. Before closing it, the executor can set up "
+                        "mail redirection so letters to Martina reach the estate, then delete the SwissID."
+                    ),
+                    supports_legacy_contact=False,
+                    requires_probate=False,
+                    required_documents=["Death Certificate", "Proof of Executor Authority", "Government ID of the executor"],
+                    data_disposition="delete",
+                    official_portal_url="https://www.post.ch/en/customer-center",
+                    security_warning="Mail redirection reroutes bank and tax letters: only the executor should set it up.",
+                ),
+                "https://post.ch",
+            ),
+            cancel_policy=CancelPolicy(
+                action_name="Redirect mail, then close account",
+                action_type="delete_account",
+                execution_method="manual_steps",
+                target_url="https://www.post.ch/en/customer-center",
+                required_documents=["Death Certificate", "Proof of Executor Authority", "Government ID of the executor"],
+                steps=[
+                    "Order mail redirection to the executor's address at a post office (bring the death certificate)",
+                    "Cancel the parcel delivery instructions and the PickPost point",
+                    "Ask Swiss Post customer service to close the customer account",
+                    "Delete the SwissID login, which other Swiss services also use",
+                ],
+            ),
+            asset_infos=[
+                GenericAssetInfo(
+                    category_name="Postal Services",
+                    custom_properties={
+                        "Login": "SwissID (also used for the tax return)",
+                        "Delivery address": "Rotbuchstrasse 42, 8037 Zürich",
+                        "PickPost point": "Zürich Wipkingen post office",
+                        "Parcel instructions": "Leave at the door when absent",
+                    },
+                ),
+            ],
+            heir="Thomas Keller",
+            wish="Other: redirect mail to Thomas, then close the account",
+            notes="Tracks parcels and manages deliveries. Her SwissID login is used for other services too.",
+        ),
         _account(
             "Dropbox", "https://dropbox.com", "m.keller@bluewin.ch",
             [
