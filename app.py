@@ -1610,7 +1610,8 @@ else:
 
     if scan_source:
         ui.section_label("Scan")
-        run_scan(scan_source)
+        # The demo statement needs no AI model, so it never stops at the "not configured" notice
+        run_scan(scan_source, use_llm=scan_source != "demo")
     elif llm_error:
         ui.section_label("Scan")
         ui.notice(f"The AI model is not configured ({llm_error[1]}). You can scan with rules only; "

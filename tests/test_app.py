@@ -106,9 +106,9 @@ def test_demo_scan_rules_only_adds_reviewable_findings(app):
     before = len(app.session_state["assets"])
     goto(app, "Discover")
     app.button(key="scan_demo").click().run()
-    # Without an LLM key the app asks before falling back to rules only.
-    app.button(key="disc_rules_only_btn").click().run()
+    # The demo scan uses rules only, so it never asks about the missing LLM key.
     assert_clean(app)
+    assert app.session_state["last_scan"]["rules_only"]
 
     assets = app.session_state["assets"]
     found = assets[before:]
