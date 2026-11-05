@@ -13,6 +13,7 @@ from digital_estate_manager.discovery.subscription_adapter import (
     BILLING_CYCLES,
     STATUSES,
     MalformedFinderResult,
+    known_merchant,
     monthly_cost,
     subscription_to_asset,
     to_discovery_result,
@@ -170,6 +171,7 @@ def test_transaction_only_finding_with_missing_optional_values():
         name=None, url=None, cancel_url=None, account_email=None, payment_method=None,
         next_expected_date=None, currency=None, service_type="gym", amount=37.05, billing_cycle="biweekly",
     )
+    sub["observed"]["descriptions"] = ["FITNESS CLUB 24 membership"]
     asset = subscription_to_asset(sub)
     assert asset.service == "Gym subscription (37.05)"
     assert asset.service_address == ""
@@ -180,9 +182,41 @@ def test_transaction_only_finding_with_missing_optional_values():
     assert asset.cancel_policy.target_url is None
     assert asset.cancel_policy.action_name == "Cancel Gym subscription (37.05)"
 
-    unnamed = subscription_to_asset(finder_subscription(name=None, service_type="other", amount=None, currency=None))
+    unnamed_sub = finder_subscription(name=None, service_type="other", amount=None, currency=None)
+    unnamed_sub["observed"]["descriptions"] = ["monthly plan"]
+    unnamed = subscription_to_asset(unnamed_sub)
     assert unnamed.service == "Unidentified subscription"
     assert unnamed.cost_monthly == 0.0
+
+
+@pytest.mark.parametrize("description, name, url", [
+    ("NETFLIX.COM Amsterdam", "Netflix", "https://netflix.com"),
+    ("OPENAI *CHATGPT SUBSCR San Francisco", "ChatGPT", "https://openai.com"),
+    ("DISNEY PLUS Monthly subscription", "Disney+", "https://disneyplus.com"),
+    ("Dauerauftrag HELSANA Zusatzversicherung", "Helsana", "https://helsana.ch"),
+    ("NZZ Digital Abo monthly", "NZZ", "https://nzz.ch"),
+])
+def test_known_merchant_names_a_transaction_only_finding(description, name, url):
+    sub = finder_subscription(name=None, url=None, cancel_url=None)
+    sub["observed"]["descriptions"] = [description]
+    asset = subscription_to_asset(sub)
+    assert (asset.service, asset.service_address) == (name, url)
+    assert asset.cancel_policy.target_url == url
+
+
+def test_finder_name_and_url_win_over_the_merchant_table():
+    asset = subscription_to_asset(finder_subscription(name="Netflix Premium", url="https://www.netflix.com/ch"))
+    assert (asset.service, asset.service_address) == ("Netflix Premium", "https://www.netflix.com/ch")
+
+    sub = finder_subscription(name=None, url="https://www.netflix.com/ch")
+    assert subscription_to_asset(sub).service_address == "https://www.netflix.com/ch"
+
+
+def test_unknown_or_missing_descriptions_keep_the_generic_label():
+    assert known_merchant(["SALTIMBOCCA RESTAURANT", "CSSX"]) is None
+    sub = finder_subscription(name=None, url=None, service_type="gym", amount=10.0)
+    del sub["observed"]
+    assert subscription_to_asset(sub).service == "Gym subscription (10.00 CHF)"
 
 
 def test_result_level_fields():
@@ -220,7 +254,9 @@ def test_malformed_subscriptions_are_skipped_and_reported():
 
 
 def test_repeated_discovery_produces_the_same_dedup_keys():
-    subs = [finder_subscription(), finder_subscription(name=None, url=None, account_email=None, service_type="gym", amount=37.05)]
+    gym = finder_subscription(name=None, url=None, account_email=None, service_type="gym", amount=37.05)
+    gym["observed"]["descriptions"] = ["FITNESS CLUB 24 membership"]
+    subs = [finder_subscription(), gym]
     first = to_discovery_result(finder_result(*copy.deepcopy(subs))).extracted_assets
     second = to_discovery_result(finder_result(*copy.deepcopy(subs))).extracted_assets
     assert [a.unique_key for a in first] == [a.unique_key for a in second]

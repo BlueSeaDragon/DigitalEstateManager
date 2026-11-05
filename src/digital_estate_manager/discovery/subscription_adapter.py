@@ -4,7 +4,8 @@ Pure data mapping: this module does not import `subscription_finder`, so it can 
 tested without the finder's dependencies.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from digital_estate_manager.models.schemas import (
     Asset,
@@ -32,6 +33,40 @@ STATUSES: Dict[str, AssetStatus] = {
 CONFIDENCE_SCORES: Dict[str, float] = {"low": 0.4, "medium": 0.7, "high": 0.9}
 
 EVIDENCE_LABELS = {"transaction": "bank transactions", "email": "billing emails"}
+
+# Bank descriptions of well-known merchants -> (service name, website). Without the LLM the
+# finder names only services seen in billing emails; this names the common ones on a statement.
+KNOWN_MERCHANTS: List[Tuple[re.Pattern, str, str]] = [
+    (re.compile(pattern, re.I), name, url)
+    for pattern, name, url in [
+        (r"netflix", "Netflix", "https://netflix.com"),
+        (r"spotify", "Spotify", "https://spotify.com"),
+        (r"disney ?(plus|\+)", "Disney+", "https://disneyplus.com"),
+        (r"openai|chatgpt", "ChatGPT", "https://openai.com"),
+        (r"adobe", "Adobe Creative Cloud", "https://adobe.com"),
+        (r"microsoft|\bmsft\b", "Microsoft 365", "https://microsoft.com"),
+        (r"apple\.com/bill|\bitunes\b", "Apple", "https://apple.com"),
+        (r"dropbox", "Dropbox", "https://dropbox.com"),
+        (r"swisscom", "Swisscom", "https://swisscom.ch"),
+        (r"sunrise", "Sunrise", "https://sunrise.ch"),
+        (r"\bsalt\b", "Salt", "https://salt.ch"),
+        (r"\bnzz\b", "NZZ", "https://nzz.ch"),
+        (r"tages-?anzeiger", "Tages-Anzeiger", "https://tagesanzeiger.ch"),
+        (r"helsana", "Helsana", "https://helsana.ch"),
+        (r"\bcss\b", "CSS", "https://css.ch"),
+        (r"swica", "SWICA", "https://swica.ch"),
+        (r"\bsbb\b", "SBB", "https://sbb.ch"),
+    ]
+]
+
+
+def known_merchant(descriptions: Iterable[str]) -> Optional[Tuple[str, str]]:
+    """(name, website) of the first known merchant in the bank descriptions, or None."""
+    for description in descriptions:
+        for pattern, name, url in KNOWN_MERCHANTS:
+            if pattern.search(description or ""):
+                return name, url
+    return None
 
 
 class MalformedFinderResult(ValueError):
@@ -118,6 +153,9 @@ def subscription_to_asset(
 
     service = _service_name(inferred)
     service_address = str(inferred.get("url") or "").strip()
+    merchant = None if inferred.get("name") else known_merchant((sub.get("observed") or {}).get("descriptions") or [])
+    if merchant:
+        service, service_address = merchant[0], service_address or merchant[1]
     death_policy, cancel_policy = get_policies_for_service(service, service_address or None)
     if inferred.get("cancel_url"):
         cancel_policy.target_url = inferred["cancel_url"]
