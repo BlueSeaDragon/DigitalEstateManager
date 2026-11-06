@@ -121,3 +121,20 @@ def test_demo_scan_rules_only_adds_reviewable_findings(app):
     app.button(key="btn_review").click().run()
     assert_clean(app)
     assert app.segmented_control(key="owner_filter").value == "To review"
+
+
+def test_executor_can_add_an_account_by_hand(app):
+    set_role(app, "Executor")
+    app.button(key="exec_add_asset").click().run()
+    assert_clean(app)
+    # The owner's wish is not the executor's to set
+    assert not any(s.key == "modal_wish" for s in app.selectbox)
+
+    app.text_input(key="modal_service").input("Zattoo")
+    app.text_input(key="modal_username").input("martina.keller@bluewin.ch")
+    # AppTest reruns the whole script, not just the dialog: keep the dialog open for the save click
+    app.button(key="exec_add_asset").click()
+    app.button(key="modal_save_primary").click().run()
+    assert_clean(app)
+    assert any(a.service == "Zattoo" for a in app.session_state["assets"])
+    assert "Zattoo" in rendered_text(app)

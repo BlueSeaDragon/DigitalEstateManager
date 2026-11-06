@@ -245,8 +245,11 @@ def email_connection_dialog():
 
 
 @st.dialog("Add asset", width="large")
-def modal_add_asset_dialog(default_category: str = "Subscription"):
-    """Adds one asset by hand. Type-specific fields follow the selected categories."""
+def modal_add_asset_dialog(default_category: str = "Subscription", executor: bool = False):
+    """Adds one asset by hand. Type-specific fields follow the selected categories.
+
+    The executor adds accounts the owner did not list; the owner's wish is not theirs to set.
+    """
     key_cat = "modal_dialog_category"
     if st.session_state.get("_last_dialog_default") != default_category:
         st.session_state[key_cat] = [default_category] if default_category in CATEGORIES else ["Subscription"]
@@ -330,20 +333,20 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         custom_cat_val = st.text_input("Category name", value="Digital account", key="modal_other_name")
         custom_notes_val = st.text_area("Description", key="modal_other_notes")
 
-    ui.section_label("After death")
-    wish_input = st.selectbox(
-        "Your wish for this account (optional)",
-        WISH_OPTIONS,
-        format_func=lambda option: option or "Not set",
-        key="modal_wish",
-    )
-    heir_input = ""
-    if wish_input == "Pass to heir":
-        heir_input = st.text_input("Responsible heir (optional)", placeholder="e.g. Lea Keller", key="modal_heir")
-    wish_detail = ""
-    if wish_input == "Other":
-        wish_detail = st.text_input("Your wish, in a few words", max_chars=60, key="modal_wish_text",
-                                    placeholder="e.g. give the photos to my sister")
+    wish_input, wish_detail, heir_input = "", "", ""
+    if not executor:
+        ui.section_label("After death")
+        wish_input = st.selectbox(
+            "Your wish for this account (optional)",
+            WISH_OPTIONS,
+            format_func=lambda option: option or "Not set",
+            key="modal_wish",
+        )
+        if wish_input == "Pass to heir":
+            heir_input = st.text_input("Responsible heir (optional)", placeholder="e.g. Lea Keller", key="modal_heir")
+        if wish_input == "Other":
+            wish_detail = st.text_input("Your wish, in a few words", max_chars=60, key="modal_wish_text",
+                                        placeholder="e.g. give the photos to my sister")
     notes_input = st.text_input("Notes (optional)", key="modal_notes")
 
     cancel_clicked, save_clicked = dialog_footer("Cancel", "Add asset", "modal_save")
@@ -418,7 +421,8 @@ def modal_add_asset_dialog(default_category: str = "Subscription"):
         )
 
         st.session_state.assets.append(new_asset)
-        save_wishes([new_asset])
+        if not executor:
+            save_wishes([new_asset])
         notify(f"{new_asset.service} added.")
         st.rerun()
 
@@ -1516,13 +1520,18 @@ elif page == "Assets":
     if not estate:
         ui.page_header("Estate overview", "The owner's inventory is empty. Scan the deceased's bank "
                        "statements to find their accounts.", eyebrow=eyebrow)
-        st.button("Find accounts", type="primary", key="exec_discover", on_click=go_to, args=("Discover",))
+        with st.container(horizontal=True):
+            st.button("Find accounts", type="primary", key="exec_discover", on_click=go_to, args=("Discover",))
+            if st.button("Add account", icon=":material/add:", key="exec_add_asset_empty"):
+                modal_add_asset_dialog(executor=True)
     else:
         # An overview, not a verdict: not every account has to be closed (some pass to an heir).
         title = f"Estate of {named}" if named else "Estate overview"
         action_col = ui.page_header(title, eyebrow=eyebrow)
         with action_col:
             with st.container(horizontal=True, horizontal_alignment="right"):
+                if st.button("Add account", icon=":material/add:", key="exec_add_asset"):
+                    modal_add_asset_dialog(executor=True)
                 st.download_button(
                     "Estate inventory (CSV)",
                     inventory_csv(estate),
