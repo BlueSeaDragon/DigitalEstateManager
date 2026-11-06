@@ -1542,15 +1542,6 @@ elif page == "Assets":
                     on_click="ignore",
                 )
 
-        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
-            st.caption("You can flag an account but not remove it.", width="content")
-            with st.popover("Why?", type="tertiary"):
-                st.markdown(
-                    "Every account the owner listed stays in the records, including ones the owner removed. "
-                    "This keeps the estate transparent for the inheritance process and prevents assets "
-                    "from being hidden. If an account did not belong to the deceased, flag it instead."
-                )
-
         wrongly_attributed = [a for a in current_assets if a.status == "Wrongly Attributed"]
         filters = ["All", "Subscriptions", "Finance", "Cloud", "Social", "Other", "Flagged", "Removed by owner"]
         choice = st.segmented_control("Filter", filters, default="All", required=True, key="executor_filter",
