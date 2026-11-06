@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -87,3 +88,13 @@ def test_other_failures_are_reported(cli):
     cli["result"] = subprocess.TimeoutExpired("claude", 180)
     with pytest.raises(claude_cli.ClaudeCLIError, match="did not answer"):
         claude_cli.ask("hi", "S")
+
+
+def test_umlauts_survive_the_subprocess(monkeypatch):
+    """`claude` speaks UTF-8; on Windows the default would read "für" back as "fÃ¼r"."""
+    echo = (
+        "import json, sys; prompt = sys.stdin.buffer.read().decode('utf-8'); "
+        "sys.stdout.buffer.write(json.dumps({'result': 'K\\u00fcndigung \\u2013 ' + prompt}, ensure_ascii=False).encode('utf-8'))"
+    )
+    monkeypatch.setattr(claude_cli, "_command", lambda system: [sys.executable, "-c", echo])
+    assert claude_cli.ask("für Zürich", "Be brief.") == "Kündigung – für Zürich"

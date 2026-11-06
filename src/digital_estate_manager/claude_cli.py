@@ -63,6 +63,8 @@ def ask_with_usage(prompt: str, system: str, timeout: float = TIMEOUT) -> tuple[
             input=prompt,
             capture_output=True,
             text=True,
+            encoding="utf-8",  # the CLI speaks UTF-8; Windows would default to cp1252 ("fÃ¼r")
+            errors="replace",
             timeout=timeout,
             cwd=tempfile.gettempdir(),
         )
