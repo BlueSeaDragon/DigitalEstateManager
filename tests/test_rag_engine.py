@@ -52,6 +52,32 @@ def test_email_channel_maps_to_cancel_policy():
     assert cancel.action_payload["mailing_address"] == EMAIL_RAW["mailing_address"]
 
 
+
+def test_numbers_in_front_of_the_steps_are_dropped():
+    """The guide numbers the steps itself, so "1. Open" would show as "1. 1. Open"."""
+    raw = dict(EMAIL_RAW, channel_instructions=[
+        "1. Open the SBB page",
+        "2) Use the form",
+        "Step 3: Send an email",
+        "Schritt 4 - Anhang beifügen",
+        "Note: Keep the confirmation.",
+        "24/7 support is available",
+        "1.5 GB of photos stay in the account",
+        "7.",
+    ])
+    _, cancel = rag_engine.policies_from_rag(raw, "SBB", "GA")
+
+    assert cancel.steps == [
+        "Open the SBB page",
+        "Use the form",
+        "Send an email",
+        "Anhang beifügen",
+        "Note: Keep the confirmation.",
+        "24/7 support is available",
+        "1.5 GB of photos stay in the account",
+        "7.",
+    ]
+
 AFTER_DEATH_RAW = {
     "notice_period": "Immediate (upon notification of death)",
     "primary_channel": "email",

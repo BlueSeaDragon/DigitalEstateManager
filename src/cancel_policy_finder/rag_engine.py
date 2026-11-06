@@ -252,6 +252,15 @@ def _as_list(value: Any) -> List[str]:
     return [item.strip() for item in value if isinstance(item, str) and item.strip()]
 
 
+# "1. ", "2) ", "Step 3: ", "Schritt 4 -": the guide numbers the steps itself
+_STEP_NUMBER = re.compile(r"^\s*(?:(?:step|schritt)\s*)?\d+\s*[.):\-–]\s+", re.IGNORECASE)
+
+
+def _as_steps(value: Any) -> List[str]:
+    """The researched steps without the numbers Claude sometimes puts in front of them."""
+    return [step for step in (_STEP_NUMBER.sub("", item, count=1).strip() for item in _as_list(value)) if step]
+
+
 def _as_url(value: Any) -> Optional[str]:
     url = _as_str(value)
     return url if url.startswith("http") else None
@@ -357,7 +366,7 @@ def policies_from_rag(
         target_url=(mourning_portal_url or portal_url) if mode == "after_death" else portal_url,
         support_email=support_email,
         required_documents=required_documents,
-        steps=_as_list(raw.get("channel_instructions")),
+        steps=_as_steps(raw.get("channel_instructions")),
         action_payload=action_payload,
     )
 
